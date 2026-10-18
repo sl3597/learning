@@ -325,6 +325,8 @@ Knowledge/Papers/
 - 新增领域：先在本节表格登记，再在 `agent/src/config.js` 的 `PAPER_DOMAINS` 增加一项，并建好 `00-README.md`。
 - 需要拆成多章精读的论文（如 ForceVLA）仍放在所属主题下做"论文专题"，它的 `01-paper-overview.md`（paper-note）会自动出现在对应领域的论文表里，标注"精读专题"。
 
+操作步骤（选领域、导入、复核、发布）见 [论文库总览 · 如何添加一篇论文](Knowledge/Papers/00-README.md#如何添加一篇论文)；本节只规定规则。
+
 ### 11.2 关联（related）
 
 - `related` 写**知识库根目录相对路径**（以 `Knowledge/` 开头），列出 2~6 篇本论文用到或延伸的知识章节，至少一篇不是论文。

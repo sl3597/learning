@@ -7,7 +7,7 @@ level: all
 tags: [论文库, 世界模型, World Model, 论文笔记, 视频生成]
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 
 # 论文库 · WAM 世界模型
@@ -30,6 +30,8 @@ _暂无论文。导入：`./start.sh paper <arXiv链接> Knowledge/Papers/WAM`_
 <!-- AUTO-GENERATED:papers END -->
 
 ### 待读清单（手写，导入后从这里删掉）
+
+> 🔗 关联：导入、复核和发布的完整步骤见 [如何添加一篇论文](../00-README.md#如何添加一篇论文)。
 
 | 论文 | arXiv | 关联章节 | 导入命令 |
 |---|---|---|---|

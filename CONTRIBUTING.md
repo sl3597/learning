@@ -46,6 +46,8 @@ git switch -c paper/vla-openvla
 
 ### 加一篇论文
 
+面向读者的完整指南（选领域、三种导入方式、手写方法、复核清单）在 [论文库总览 · 如何添加一篇论文](Knowledge/Papers/00-README.md#如何添加一篇论文)，下面是精简版：
+
 1. `./start.sh paper <arXiv链接> Knowledge/Papers/<VLA|WAM|Robotics>`（Web 里"导入论文"也行）；没有 API 凭据时，在 Claude Code 里用 `/import-paper <arXiv链接>`。
    导入会自动：选领域 topic、填写 `related`（关联的知识章节）、刷新论文库目录表格。
 2. 人工复核：数字是否和论文一致、`related` 是否贴切、`> ❓ 待解决：` 是否需要补充。复核完把 `status` 改成 `reviewed`。

@@ -146,6 +146,10 @@ export class KnowledgeBase {
         status: d.meta.status ?? null,
         chapter: d.meta.chapter != null ? Number(d.meta.chapter) : null,
         estimated_time: d.meta.estimated_time ?? null,
+        topic: d.meta.topic ?? null,
+        tags: Array.isArray(d.meta.tags) ? d.meta.tags : [],
+        year: d.meta.year ?? null,
+        summary: summaryOf(d.body) ?? summaryOf(d.sections.find((x) => x.heading === "一句话总结")?.text.replace(/^/, "> ") ?? ""),
       });
     }
     const toArray = (n) => ({ ...n, dirs: Object.values(n.dirs).map(toArray) });
@@ -237,6 +241,24 @@ export class KnowledgeBase {
 /** A real paper note: type paper-note inside Knowledge/ (templates and notes/ drafts don't count). */
 export function isPaperNote(doc) {
   return doc.meta.type === "paper-note" && doc.relPath.startsWith("Knowledge/");
+}
+
+const CALLOUT_PREFIX = /^(💡|⚠️|🔍|🔗|❓|📌)/;
+
+/** The one-line intro every chapter starts with (STANDARD 第 4 节的 "> 一句话说明"), as plain text for cards. */
+export function summaryOf(body, max = 120) {
+  for (const line of body.split("\n")) {
+    if (/^#{1,6}\s/.test(line) || !line.trim()) continue;
+    if (!line.startsWith(">")) return null; // 简介只认标题后的第一个引用块
+    const text = line
+      .replace(/^>\s*/, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/[*_`]/g, "")
+      .trim();
+    if (!text || CALLOUT_PREFIX.test(text)) return null;
+    return text.length > max ? text.slice(0, max - 1) + "…" : text;
+  }
+  return null;
 }
 
 /** `related` frontmatter as a list of normalized KB-root paths. */
