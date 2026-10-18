@@ -19,6 +19,7 @@
       <span>🔍</span><span class="search-label">搜索知识库…</span><kbd>⌘K</kbd>
     </button>
     <div class="topbar-actions">
+      <a id="browseBtn" class="btn ghost" href="#/browse">🗂 分类浏览</a>
       <button id="importBtn" class="btn ghost">＋ 导入论文</button>
       <button id="themeBtn" class="icon-btn" title="切换深浅色">🌙</button>
       <button id="toggleChat" class="btn primary">💬 助教</button>
@@ -26,10 +27,19 @@
   </header>
 
   <div id="layout" class="layout">
-    <nav id="nav" class="nav">
+    <nav id="nav" class="nav" aria-label="目录">
+      <div class="nav-tools">
+        <input id="navFilter" type="search" placeholder="筛选章节、标签…" autocomplete="off" aria-label="筛选章节" />
+        <a id="navBrowse" class="nav-browse" href="#/browse" title="按主题、类型、难度、标签筛选">🗂</a>
+      </div>
       <div id="stats" class="nav-stats"></div>
       <div id="tree" class="tree"></div>
+      <div id="navEmpty" class="nav-empty" hidden>没有匹配的章节</div>
+      <div class="nav-legend" aria-label="图例">
+        <span><i class="dot beginner"></i>入门</span><span><i class="dot intermediate"></i>进阶</span><span><i class="dot advanced"></i>高级</span><span><b class="ok">✓</b>已复核</span>
+      </div>
     </nav>
+    <div id="navBackdrop" class="nav-backdrop"></div>
 
     <main id="main" class="main">
       <div class="page">

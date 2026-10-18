@@ -83,6 +83,9 @@ node --check src/xxx.js            # 改完 JS 先做语法检查
 - 检查器对 `00-README.md` 的文件名有特例，其他文件必须是 `两位数字-小写短横线.md`。
 - 用 `sed -i` 时记得 macOS 需要 `sed -i ''`。
 - 仓库在 `~/Learning`（`~/Desktop/Learning` 是符号链接）。macOS 的隐私保护不让 launchd 服务读桌面，别把仓库挪回桌面；`start.sh` 用 `pwd -P` 取物理路径就是为此。
+- `web/app.js` 顶部的 `SECTIONS`（顶层主题的短名、图标、颜色、学习顺序）和 `SUBS`（子文件夹短名、论文领域图标与顺序）决定侧栏、首页、分类浏览怎么归类。新增主题文件夹时在这里登记一行，不登记也能显示（用目录页标题、📁、排在最后）。
+- `web/app.js` 里的 `history` 变量是聊天记录，遮住了 `window.history`；操作浏览器历史必须写 `window.history`。
+- 无头 Chrome 的窗口有最小宽度（约 500px），`--window-size=390,...` 截出来的"手机版"是假的；测窄屏要用 390px 宽的 iframe 套页面。
 - `start.sh` 里变量后面紧跟全角标点（`$LOG）`）会被 bash 当成变量名的一部分，要写成 `${LOG}`。
 - `CONTRIBUTING.md`、`CHANGELOG.md` 在 `EXCLUDED_FILES` 里，不被索引也不受 STANDARD 检查；根目录新增其他非知识类 .md 也要加进去，否则会被要求 frontmatter。
 - 子代理并行写不同文件夹时，跨文件夹链接的文件名要事先约定，否则最后要统一修链接（历史上 ForceVLA 与 Basic 之间出过这个问题）。
