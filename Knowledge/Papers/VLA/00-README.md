@@ -34,6 +34,8 @@ updated: 2026-10-18
 
 ### 待读清单（手写，导入后从这里删掉）
 
+> 🔗 关联：导入、复核和发布的完整步骤见 [如何添加一篇论文](../00-README.md#如何添加一篇论文)。
+
 | 论文 | arXiv | 关联章节 | 导入命令 |
 |---|---|---|---|
 | RT-2 | [2307.15818](https://arxiv.org/abs/2307.15818) | [05 代表性模型](../../VLA/Basic/05-representative-models.md) | `./start.sh paper https://arxiv.org/abs/2307.15818 Knowledge/Papers/VLA` |
