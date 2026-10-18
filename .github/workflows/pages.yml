@@ -1,0 +1,52 @@
+# 公网阅读站：push 到 main → 完整 CI（与本机 pre-push 相同）→ 构建静态站 → 发布到 GitHub Pages。
+# CI 不通过就不发布，线上永远是通过检查的版本。AI 助教不在这里运行（只在本机版里）。
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - name: 安装依赖
+        run: npm ci --no-fund --no-audit
+        working-directory: agent
+      - name: 完整 CI（语法 / 密钥 / 守卫 / 规范 / 论文索引 / 测试）
+        run: node scripts/ci.js
+        working-directory: agent
+      - name: 构建静态站
+        run: node agent/scripts/build-static.js dist
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

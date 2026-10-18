@@ -1,0 +1,3 @@
+#!/bin/sh
+# 提交前快速检查：语法 / 密钥 / 术语守卫 / STANDARD 规范 / 论文库索引（约 1 秒，不跑测试）
+exec node "$(git rev-parse --show-toplevel)/agent/scripts/ci.js" --fast

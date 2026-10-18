@@ -1,0 +1,7 @@
+#!/bin/sh
+# 合并 / pull 之后：依赖有变化就自动重新安装，保证本地服务能直接跑
+ROOT="$(git rev-parse --show-toplevel)"
+if git diff --name-only ORIG_HEAD HEAD 2>/dev/null | grep -q '^agent/package-lock.json$'; then
+  echo "📦 agent/package-lock.json 有变化，重新安装依赖…"
+  (cd "$ROOT/agent" && npm install --no-fund --no-audit)
+fi

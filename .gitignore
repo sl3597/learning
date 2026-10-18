@@ -1,0 +1,18 @@
+# 依赖与密钥
+node_modules/
+.env
+.env.*
+!.env.example
+
+# 系统 / 编辑器
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# 本地临时产物
+*.tmp
+.cache/
+
+# 静态站构建产物（GitHub Actions 里重新生成）
+dist/

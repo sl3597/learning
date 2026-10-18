@@ -1,0 +1,3 @@
+#!/bin/sh
+# 推送前跑完整 CI（含单元 + 冒烟测试）
+exec node "$(git rev-parse --show-toplevel)/agent/scripts/ci.js"

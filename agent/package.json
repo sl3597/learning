@@ -1,0 +1,30 @@
+{
+  "name": "learning-kb-agent",
+  "version": "0.1.0",
+  "description": "Knowledge-base learning agent: indexes the Learning markdown folders, serves a web reader, answers questions with Claude, and turns papers into notes.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "index": "node src/cli.js index",
+    "search": "node src/cli.js search",
+    "ask": "node src/cli.js ask",
+    "paper": "node src/cli.js paper",
+    "papers": "node src/cli.js papers",
+    "check": "node src/cli.js check",
+    "test": "node --test test/*.test.js",
+    "ci": "node scripts/ci.js",
+    "ci:fast": "node scripts/ci.js --fast",
+    "release": "node scripts/release.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@highlightjs/cdn-assets": "^11.9.0",
+    "katex": "^0.16.9",
+    "marked": "^12.0.2",
+    "mermaid": "^10.9.0"
+  }
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Learning 知识库</title>
+  <link rel="stylesheet" href="vendor/hljs/styles/github.min.css" id="hljsLight" />
+  <link rel="stylesheet" href="vendor/hljs/styles/github-dark.min.css" id="hljsDark" disabled />
+  <link rel="stylesheet" href="vendor/katex/katex.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="progress" class="progress-bar"></div>
+
+  <header class="topbar">
+    <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）">☰</button>
+    <a class="brand" href="#/"><span class="logo">📚</span><span>Learning 知识库</span></a>
+    <button id="searchBtn" class="search-btn" title="搜索（⌘K / Ctrl+K）">
+      <span>🔍</span><span class="search-label">搜索知识库…</span><kbd>⌘K</kbd>
+    </button>
+    <div class="topbar-actions">
+      <button id="importBtn" class="btn ghost">＋ 导入论文</button>
+      <button id="themeBtn" class="icon-btn" title="切换深浅色">🌙</button>
+      <button id="toggleChat" class="btn primary">💬 助教</button>
+    </div>
+  </header>
+
+  <div id="layout" class="layout">
+    <nav id="nav" class="nav">
+      <div id="stats" class="nav-stats"></div>
+      <div id="tree" class="tree"></div>
+    </nav>
+
+    <main id="main" class="main">
+      <div class="page">
+        <article id="content" class="content"></article>
+        <aside id="toc" class="toc"></aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- 助教抽屉 -->
+  <aside id="chat" class="chat">
+    <div class="chat-header">
+      <div>
+        <strong>学习助教</strong>
+        <div id="chatModel" class="muted small"></div>
+      </div>
+      <div class="chat-header-actions">
+        <button id="clearChat" class="btn ghost small">清空</button>
+        <button id="closeChat" class="icon-btn" title="关闭">✕</button>
+      </div>
+    </div>
+    <div id="chatLog" class="chat-log">
+      <div class="chat-empty" id="chatEmpty">
+        <p>问我任何知识库里的问题。回答会附上文档链接，也可以让我把内容整理成笔记。</p>
+        <div class="chips">
+          <button class="chip" data-q="用大白话解释当前章节的核心概念">解释当前章节</button>
+          <button class="chip" data-q="根据当前章节给我出 3 道练习题，先不要给答案">出 3 道练习题</button>
+          <button class="chip" data-q="总结当前章节的要点，并整理成一份笔记保存到 notes/">整理成笔记</button>
+          <button class="chip" data-q="我是零基础，接下来应该先学哪一章？">我该从哪学起</button>
+        </div>
+      </div>
+    </div>
+    <form id="chatForm" class="chat-form">
+      <textarea id="chatInput" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
+      <div class="chat-actions">
+        <label class="muted small"><input type="checkbox" id="withContext" checked /> 结合当前文档</label>
+        <button type="submit" class="btn primary small">发送</button>
+      </div>
+    </form>
+  </aside>
+
+  <!-- 搜索面板 -->
+  <div id="palette" class="palette" hidden>
+    <div class="palette-box">
+      <input id="paletteInput" type="search" placeholder="搜索标题、段落、命令…（支持中英文）" autocomplete="off" />
+      <div id="paletteResults" class="palette-results"></div>
+      <div class="palette-foot muted small">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
+    </div>
+  </div>
+
+  <!-- 导入论文 -->
+  <dialog id="importDialog">
+    <form id="importForm">
+      <h2>导入论文 → 生成笔记</h2>
+      <p class="muted">支持 arXiv 链接、PDF 链接或本地 PDF。生成的笔记遵循 STANDARD.md 第 5、11 节：自动关联相关知识章节，并更新论文库目录。保存后请人工复核并把 status 改为 reviewed。</p>
+      <label>论文链接（arXiv / PDF）<input id="paperUrl" type="url" placeholder="https://arxiv.org/abs/2505.22159" /></label>
+      <label>或选择本地 PDF<input id="paperFile" type="file" accept="application/pdf" /></label>
+      <div class="row">
+        <label>保存到文件夹<input id="paperDir" list="dirList" value="Knowledge/Papers/VLA" /><datalist id="dirList"></datalist></label>
+        <label>topic<input id="paperTopic" placeholder="论文库内自动推断" /></label>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="importCancel">取消</button>
+        <button type="submit" class="btn primary">开始生成</button>
+      </div>
+      <pre id="importProgress" class="progress-log" hidden></pre>
+    </form>
+  </dialog>
+
+  <script src="vendor/marked/marked.min.js"></script>
+  <script src="vendor/hljs/highlight.min.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/katex/contrib/auto-render.min.js"></script>
+  <script src="vendor/mermaid/mermaid.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
