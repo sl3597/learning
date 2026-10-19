@@ -11,6 +11,7 @@
   let flatFiles = [];
   let currentPath = "";
   let history = [];
+  let editor = null; // 打开中的笔记编辑器 { path, dirty }（见"笔记编辑器"一节）
   const isMobile = () => window.matchMedia("(max-width: 900px)").matches;
 
   // ---------- 数据来源：本机服务（/api，含助教）或静态站（data/*.json，GitHub Pages，只读）----------
@@ -134,6 +135,7 @@
   // 子文件夹（相对 Knowledge/）→ 短名与图标；登记顺序就是显示顺序（论文领域与学习路线对齐）
   const SUBS = {
     "VLA/Basic": { label: "基础教程" },
+    "VLA/Pi": { label: "π 系列专题" },
     "VLA/ForceVLA": { label: "ForceVLA 精读" },
     "Papers/VLA": { label: "VLA 论文", icon: "🤖" },
     "Papers/WAM": { label: "世界模型论文", icon: "🌍" },
@@ -310,7 +312,7 @@
         <div class="home-sec-head"><h2>按标签探索</h2><a href="#/browse">分类浏览 →</a></div>
         <div class="tag-cloud">${tags.map(([t, n]) => `<a class="tchip" href="#/browse?tag=${encodeURIComponent(t)}">#${escapeHtml(t)}<b>${n}</b></a>`).join("")}</div>
       </section>` : ""}
-      <p class="muted small home-keys">快捷键：<kbd>⌘K</kbd> 搜索 · <kbd>[</kbd> 目录 · <kbd>]</kbd> 助教 · <kbd>←</kbd><kbd>→</kbd> 上一章/下一章</p>`;
+      <p class="muted small home-keys">快捷键：<kbd>⌘K</kbd> 搜索 · <kbd>[</kbd> 目录 · <kbd>]</kbd> 助教 · <kbd>←</kbd><kbd>→</kbd> 上一章/下一章${STATIC ? "" : " · <kbd>e</kbd> 编辑当前文档 · <kbd>n</kbd> 新建笔记 · <kbd>⌘S</kbd> 保存"}</p>`;
   }
   function showHome() { currentPath = ""; contentEl.innerHTML = tree ? homeHtml() : ""; tocEl.innerHTML = ""; document.title = "Learning 知识库"; highlightActive(); mainEl.scrollTo(0, 0); }
 
@@ -344,7 +346,8 @@
       m.updated && `<span class="pill tag">更新 ${escapeHtml(m.updated)}</span>`,
       ...(Array.isArray(m.tags) ? m.tags : []).map((t) => `<a class="pill tag hash" href="${facet("tag", t)}">#${escapeHtml(t)}</a>`),
     ].filter(Boolean).join("");
-    contentEl.innerHTML = `<div class="crumbs">${crumbs}</div><div class="doc-head"><h1>${renderInline(title)}</h1><div class="pills">${pills}</div></div>${renderMarkdown(body, doc.path)}${relatedBox(doc)}${pager(doc.path)}`;
+    const editBtn = !STATIC && canEdit(doc.path) ? `<a class="btn small ghost edit-btn" href="#/edit/${doc.path}" title="在网页里修改这篇文档（保存后自动重建）">✎ 编辑</a>` : "";
+    contentEl.innerHTML = `<div class="crumbs">${crumbs}</div><div class="doc-head"><h1>${renderInline(title)}</h1><div class="pills">${pills}${editBtn}</div></div>${renderMarkdown(body, doc.path)}${relatedBox(doc)}${pager(doc.path)}`;
     postProcess(contentEl);
     buildToc();
     highlightActive();
@@ -481,10 +484,15 @@
     document.title = `搜索 ${q} · Learning 知识库`; highlightActive();
   }
   const palette = $("#palette"), pInput = $("#paletteInput"), pRes = $("#paletteResults");
-  let pSel = 0, pHits = [], pTimer = null;
-  function openPalette() { palette.hidden = false; pInput.value = ""; pRes.innerHTML = `<div class="empty">输入关键词开始搜索</div>`; setTimeout(() => pInput.focus(), 0); }
-  function closePalette() { palette.hidden = true; }
-  $("#searchBtn").addEventListener("click", openPalette);
+  let pSel = 0, pHits = [], pTimer = null, pMode = "nav"; // nav：打开文档；insert：把选中的章节作为相对链接插进编辑器
+  function openPalette(mode = "nav") {
+    pMode = mode === "insert" && editor ? "insert" : "nav";
+    palette.hidden = false; pInput.value = ""; pInput.placeholder = pMode === "insert" ? "搜索要链接的章节…" : "搜索标题、段落、命令…（支持中英文）";
+    $("#paletteFoot").textContent = pMode === "insert" ? "↑↓ 选择 · Enter 插入链接 · Esc 取消" : "↑↓ 选择 · Enter 打开 · Esc 关闭";
+    pRes.innerHTML = `<div class="empty">输入关键词开始搜索</div>`; setTimeout(() => pInput.focus(), 0);
+  }
+  function closePalette() { palette.hidden = true; if (pMode === "insert") { pMode = "nav"; $("#edText")?.focus(); } }
+  $("#searchBtn").addEventListener("click", () => openPalette());
   palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
   pInput.addEventListener("input", () => { clearTimeout(pTimer); pTimer = setTimeout(async () => {
     const q = pInput.value.trim(); if (!q) { pRes.innerHTML = `<div class="empty">输入关键词开始搜索</div>`; return; }
@@ -494,25 +502,259 @@
     pRes.innerHTML = pHits.length ? pHits.map((h, i) => `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div><div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`).join("") : `<div class="empty">没有结果</div>`;
     pRes.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => goHit(pHits[Number(r.dataset.i)])));
   }
-  function goHit(h) { if (!h) return; closePalette(); location.hash = `#/${h.relPath}#${slug(h.heading)}`; }
+  function goHit(h) { if (!h) return; if (pMode === "insert" && editor?.insertLink) { editor.insertLink(h); closePalette(); return; } closePalette(); location.hash = `#/${h.relPath}#${slug(h.heading)}`; }
   pInput.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") { e.preventDefault(); pSel = Math.min(pHits.length - 1, pSel + 1); renderPalette(pInput.value.trim()); }
     else if (e.key === "ArrowUp") { e.preventDefault(); pSel = Math.max(0, pSel - 1); renderPalette(pInput.value.trim()); }
-    else if (e.key === "Enter") { e.preventDefault(); if (pHits.length) goHit(pHits[pSel]); else if (pInput.value.trim()) { closePalette(); location.hash = "#/search=" + encodeURIComponent(pInput.value.trim()); } }
+    else if (e.key === "Enter") { e.preventDefault(); if (pHits.length) goHit(pHits[pSel]); else if (pInput.value.trim() && pMode !== "insert") { closePalette(); location.hash = "#/search=" + encodeURIComponent(pInput.value.trim()); } }
     else if (e.key === "Escape") closePalette();
   });
 
   // ---------- 路由 ----------
   const hashPath = () => location.hash.replace(/^#\/?/, "");
+  let lastHash = location.hash;
   function route() {
+    // 离开编辑器前确认（替换地址不会再次触发 hashchange；注意本文件的 history 变量是聊天记录）
+    if (editor?.dirty && location.hash !== lastHash && !confirm("有未保存的修改，确定离开编辑器？")) { window.history.replaceState(null, "", lastHash); return; }
+    lastHash = location.hash;
+    if (editor) closeEditor();
     const h = hashPath();
     if (!h) return showHome();
     if (h.startsWith("search=")) return showSearch(decodeURIComponent(h.slice(7)));
     if (h === "browse" || h.startsWith("browse?")) return showBrowse(h.slice(7));
+    if (!STATIC && (h === "new" || h.startsWith("new?"))) { const q = new URLSearchParams(h.slice(4)); return showEditor({ dir: q.get("dir") || "", prefill: q.get("prefill") === "1" }); }
+    if (!STATIC && h.startsWith("edit/")) return showEditor({ path: decodeURIComponent(h.slice(5).split("#")[0]) });
     const [p, hash] = h.split("#");
     showDoc(decodeURIComponent(p), hash);
   }
   window.addEventListener("hashchange", route);
+
+  // ---------- 笔记编辑器（本机版）：#/new?dir=… 新建，#/edit/<path> 修改；保存 → 服务端重建索引 + 静态站 ----------
+  const canEdit = (p) => p.endsWith(".md") && p !== "STANDARD.md" && !p.startsWith("templates/");
+  const toastEl = $("#toast");
+  let toastTimer = null;
+  function toast(text, ms = 3200) {
+    toastEl.textContent = text; toastEl.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => (toastEl.hidden = true), ms);
+  }
+  const splitFrontmatter = (text) => { const m = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/); return m ? { fm: m[0], body: text.slice(m[0].length) } : { fm: "", body: text }; };
+  /** 下一个章节号：文件夹里已有的最大 NN + 1 */
+  function nextNumber(dir) {
+    const nums = flatFiles.filter((f) => f.path.startsWith(dir + "/") && !f.path.slice(dir.length + 1).includes("/")).map((f) => Number((f.name.match(/^(\d{2})-/) || [])[1])).filter((n) => !Number.isNaN(n));
+    return String(Math.max(0, ...nums) + 1).padStart(2, "0");
+  }
+  const siblingTopic = (dir) => flatFiles.find((f) => f.path.startsWith(dir + "/") && f.topic)?.topic ?? "";
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const relLink = (fromDir, to) => { const a = fromDir ? fromDir.split("/") : [], b = to.split("/"); let i = 0; while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++; return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/"); };
+  let rules = null; // STANDARD 硬规则，来自 /api/rules（与检查器同源）
+  /** 编辑器里的实时规范检查：和服务端 kb.check() 同一套规则，省一次"保存才知道错"的往返 */
+  function lintDraft(text, targetPath, isNew) {
+    const out = [];
+    if (!rules) return out;
+    const fmm = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+    if (!fmm) return ["第一行必须是 --- 开头的 frontmatter"];
+    const meta = {};
+    for (const line of fmm[1].split(/\r?\n/)) { const m = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/); if (m) meta[m[1]] = m[2].replace(/\s+#.*$/, "").trim(); else if (/^\s+-\s+\S/.test(line) && out.lastKey) meta[out.lastKey] = (meta[out.lastKey] || "") + " -"; }
+    for (const f of rules.fields) if (meta[f] == null || meta[f] === "" || meta[f] === "[]") out.push(`frontmatter 缺少 ${f}`);
+    const base = targetPath.slice(targetPath.lastIndexOf("/") + 1);
+    if (isNew && base && !/^\d{2}-$/.test(base) && !new RegExp(rules.fileName).test(base)) out.push("文件名必须是 两位数字-小写英文短横线.md"); // 还只有 NN- 前缀时先不催
+    const body = text.slice(fmm[0].length);
+    const prose = body.replace(/^\s*```[\s\S]*?^\s*```\s*$/gm, "").replace(/`[^`\n]*`/g, "");
+    if (!/^#\s+\S/m.test(prose)) out.push("缺少 H1 标题（# 开头）");
+    const heads = [...prose.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1].trim());
+    const need = rules.sections[meta.type] ?? [];
+    const missing = need.filter((h) => !heads.includes(h));
+    for (const h of missing) out.push(`缺少固定段落 ## ${h}`);
+    if (!missing.length && need.length) { const seq = heads.filter((h) => need.includes(h)); if (seq.join("|") !== need.join("|")) out.push("固定段落的顺序和 STANDARD 不一致"); }
+    let inFence = false;
+    body.split("\n").forEach((line, i) => { if (!/^\s*```/.test(line)) return; if (!inFence && /^\s*```\s*$/.test(line)) out.push(`代码块未标语言（第 ${i + 1 + fmm[0].split("\n").length - 1} 行）`); inFence = !inFence; });
+    const dir = targetPath.slice(0, targetPath.lastIndexOf("/"));
+    const known = new Set(flatFiles.map((f) => f.path)); known.add(targetPath);
+    for (const m of prose.matchAll(/\]\(([^)\s#]+\.md)(#[^)]*)?\)/g)) { const t = m[1]; if (/^https?:/.test(t)) continue; const abs = resolveRel(dir ? dir + "/x" : "x", t); if (!known.has(abs)) out.push(`链接目标不存在: ${t}`); }
+    if (meta.type === "paper-note") {
+      if (!/^related:\s*(\[.*\S.*\]|\S)|^related:\s*$\n\s+-\s+\S/m.test(fmm[1])) out.push("论文笔记必须有 related（关联的知识章节）");
+      const sum = body.match(/^## 一句话总结\s*\n([\s\S]*?)(?=^## )/m)?.[1].replace(/\s+/g, "") ?? "";
+      if (sum.length > rules.summaryMax) out.push(`一句话总结 ${sum.length} 字，超过 ${rules.summaryMax} 字`);
+    }
+    return out;
+  }
+  const SNIPPETS = [
+    ["💡 要点", "> 💡 要点："], ["⚠️ 注意", "> ⚠️ 注意："], ["🔍 深入", "> 🔍 深入："], ["🔗 关联", "> 🔗 关联："], ["❓ 待解决", "> ❓ 待解决："],
+    ["代码块", "```bash\n\n```"], ["表格", "| 列 1 | 列 2 | 列 3 |\n|---|---|---|\n| | | |"], ["折叠答案", "<details><summary>答案</summary>\n\n</details>"], ["公式", "$$\n\n$$"], ["Mermaid", "```mermaid\nflowchart LR\n  A[输入] --> B[输出]\n```"],
+  ];
+  const draftKey = (path, dir) => `draft:${path ?? "new:" + dir}`;
+  async function showEditor({ path, dir, prefill }) {
+    currentPath = ""; tocEl.innerHTML = ""; highlightActive();
+    const isEdit = Boolean(path);
+    let raw = null, templates = [], dirs = [];
+    try {
+      [dirs, templates, raw, rules] = await Promise.all([getJSON("/api/dirs"), isEdit ? [] : getJSON("/api/templates"), isEdit ? getJSON(`/api/raw?path=${encodeURIComponent(path)}`) : null, rules ?? getJSON("/api/rules")]);
+    } catch (err) { contentEl.innerHTML = `<div class="doc-head"><h1>无法打开编辑器</h1></div><p>${escapeHtml(err.message)}</p>`; return; }
+    if (isEdit && raw && !raw.editable) { contentEl.innerHTML = `<div class="doc-head"><h1>这篇文档不能在网页里修改</h1></div><p>${escapeHtml(path)}</p>`; return; }
+    const startDir = isEdit ? path.slice(0, path.lastIndexOf("/")) : dir || (lastDoc()?.path ? lastDoc().path.slice(0, lastDoc().path.lastIndexOf("/")) : "notes");
+    const canRegister = !isEdit && !startDir.startsWith("Knowledge/Papers/") && startDir !== "notes";
+    contentEl.innerHTML = `<div class="doc-head editor-head"><h1>${isEdit ? "✎ 编辑文档" : "✎ 新建笔记"}</h1>
+        <p class="editor-help">保存后本机服务会自动：重建索引 → 刷新论文库目录 → 重新生成静态站，并刷新所有打开的页面。右下角实时对照 <a href="#/STANDARD.md">STANDARD.md</a> 检查；草稿会自动暂存在浏览器里。</p></div>
+      <div class="editor">
+        <div class="editor-top"><div class="editor-bar">
+          <label>文件夹<input id="edDir" class="ed-dir" list="edDirs" value="${escapeHtml(startDir)}" ${isEdit ? "readonly" : ""} /><datalist id="edDirs">${dirs.map((d) => `<option value="${escapeHtml(d)}">`).join("")}</datalist></label>
+          <label>文件名<input id="edName" class="ed-name" placeholder="03-my-note.md" value="${escapeHtml(isEdit ? path.slice(path.lastIndexOf("/") + 1) : "")}" ${isEdit ? "readonly" : ""} /></label>
+          ${isEdit ? "" : `<label>模板<select id="edTpl">${templates.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`).join("")}</select></label>`}
+          <span class="spacer"></span>
+          <label class="check" ${canRegister ? "" : "hidden"} title="保存后按 frontmatter 在所在文件夹的 00-README.md 章节表里加一行"><input type="checkbox" id="edRegister" checked /> 登记到目录</label>
+          <label class="check"><input type="checkbox" id="edPreviewOn" checked /> 预览</label>
+          <a class="btn" href="${isEdit ? "#/" + path : "#/"}">取消</a>
+          <button type="button" class="btn primary" id="edSave">保存 <kbd>⌘S</kbd></button>
+        </div>
+        <div class="ed-tools" role="toolbar" aria-label="插入">${SNIPPETS.map(([l], i) => `<button type="button" class="tool" data-i="${i}">${escapeHtml(l)}</button>`).join("")}<button type="button" class="tool" id="edLink" title="搜索知识库并插入相对链接">🔎 插入章节链接</button></div></div>
+        <div id="edDraft" class="draft-bar" hidden></div>
+        <div class="editor-panes" id="edPanes"><textarea id="edText" spellcheck="false" placeholder="第一行必须是 --- 开头的 frontmatter"></textarea><div class="editor-right"><div id="edLint" class="editor-lint"></div><div id="edPreview" class="content editor-preview"></div></div></div>
+        <div id="edStatus" class="editor-status" hidden></div>
+      </div>`;
+    const edDir = $("#edDir"), edName = $("#edName"), edTpl = $("#edTpl"), edText = $("#edText"), edPreview = $("#edPreview"), edStatus = $("#edStatus"), edLint = $("#edLint");
+    editor = { path: isEdit ? path : null, dirty: false, fresh: "", isEdit };
+    const status = (html, cls) => { edStatus.hidden = false; edStatus.className = `editor-status ${cls ?? ""}`; edStatus.innerHTML = html; };
+    const targetPath = () => editor.path ?? `${edDir.value.trim().replace(/\/+$/, "")}/${edName.value.trim()}`;
+    let previewTimer = null, draftTimer = null;
+    const renderLint = () => {
+      const problems = lintDraft(edText.value, targetPath(), !editor.path);
+      edLint.className = `editor-lint ${problems.length ? "bad" : "good"}`;
+      edLint.innerHTML = problems.length ? `<b>规范检查：${problems.length} 个问题</b><ul>${problems.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : `<b>✓ 符合 STANDARD.md</b>`;
+    };
+    const renderPreview = () => {
+      renderLint();
+      if (!$("#edPreviewOn").checked) return;
+      const { body } = splitFrontmatter(edText.value);
+      const h1 = body.match(/^#\s+(.+)$/m);
+      edPreview.innerHTML = (h1 ? `<h1 class="preview-title">${renderInline(h1[1])}</h1>` : "") + renderMarkdown(h1 ? body.replace(h1[0], "") : body, targetPath());
+      postProcess(edPreview);
+    };
+    const schedulePreview = () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 250); };
+    // 草稿自动暂存：刷新、误点链接、服务重启都不丢
+    const saveDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(() => { if (editor?.dirty) store.set(draftKey(editor.path, edDir.value.trim()), JSON.stringify({ content: edText.value, name: edName.value, at: Date.now() })); }, 400); };
+    const clearDraft = () => { try { localStorage.removeItem(draftKey(editor.path, edDir.value.trim())); } catch {} };
+    const offerDraft = () => {
+      let d = null; try { d = JSON.parse(store.get(draftKey(editor.path, edDir.value.trim())) || "null"); } catch {}
+      if (!d || d.content === edText.value) return;
+      const bar = $("#edDraft"); bar.hidden = false;
+      bar.innerHTML = `📝 发现 ${Math.max(1, Math.round((Date.now() - d.at) / 60000))} 分钟前未保存的草稿${d.name ? `（${escapeHtml(d.name)}）` : ""}。<button type="button" class="btn small primary" id="edRestore">恢复</button><button type="button" class="btn small" id="edDiscard">丢弃</button>`;
+      $("#edRestore").addEventListener("click", () => { edText.value = d.content; if (d.name && !editor.path) edName.value = d.name; editor.dirty = true; bar.hidden = true; renderPreview(); });
+      $("#edDiscard").addEventListener("click", () => { clearDraft(); bar.hidden = true; });
+    };
+    // 在光标处插入片段（选中文字时放进片段的空行里）
+    const insert = (snippet) => {
+      const s0 = edText.selectionStart, e0 = edText.selectionEnd, sel = edText.value.slice(s0, e0);
+      const text = sel && snippet.includes("\n\n") ? snippet.replace("\n\n", `\n${sel}\n`) : snippet.endsWith("：") ? snippet + sel : snippet;
+      const before = edText.value.slice(0, s0);
+      const pad = before && !before.endsWith("\n") && snippet.startsWith("|") ? "\n" : before && !before.endsWith("\n") && (snippet.startsWith(">") || snippet.startsWith("`") || snippet.startsWith("<") || snippet.startsWith("$")) ? "\n\n" : "";
+      edText.setRangeText(pad + text, s0, e0, "end");
+      const caret = snippet.includes("\n\n") && !sel ? s0 + pad.length + snippet.indexOf("\n\n") + 1 : edText.selectionEnd;
+      edText.setSelectionRange(caret, caret); edText.focus();
+      editor.dirty = true; schedulePreview(); saveDraft();
+    };
+    document.querySelectorAll(".ed-tools .tool[data-i]").forEach((b) => b.addEventListener("click", () => insert(SNIPPETS[Number(b.dataset.i)][1])));
+    $("#edLink").addEventListener("click", () => openPalette("insert"));
+    editor.insertLink = (hit) => { const t = targetPath(); insert(`[${hit.title}](${relLink(t.slice(0, t.lastIndexOf("/")), hit.relPath)})`); };
+    // 编辑器 ↔ 预览按比例同步滚动
+    edText.addEventListener("scroll", () => { if (!$("#edPreviewOn").checked) return; const r = edText.scrollTop / Math.max(1, edText.scrollHeight - edText.clientHeight); edPreview.scrollTop = r * (edPreview.scrollHeight - edPreview.clientHeight); });
+    // 新建：按文件夹填默认值（章节号、topic），内容还是"未改动的模板"时跟着换
+    const applyTemplate = () => {
+      const t = templates.find((x) => x.id === edTpl.value) ?? templates[0];
+      if (!t) return;
+      const d = edDir.value.trim().replace(/\/+$/, "");
+      const n = nextNumber(d), topic = siblingTopic(d);
+      let text = t.content.replace(/^chapter:\s*\d+/m, `chapter: ${Number(n)}`);
+      if (topic) text = text.replace(/^topic:\s*\S+(.*)$/m, `topic: ${topic}$1`);
+      edText.value = editor.fresh = text; editor.dirty = false;
+      if (!edName.value.trim() || /^\d{2}-$/.test(edName.value.trim())) edName.value = `${n}-`;
+      renderPreview();
+    };
+    if (isEdit) { edText.value = editor.fresh = raw.content; renderPreview(); }
+    else {
+      applyTemplate();
+      edTpl.addEventListener("change", () => { if (editor.dirty && !confirm("切换模板会清空当前内容，继续？")) { return; } applyTemplate(); });
+      edDir.addEventListener("change", () => { if (!editor.dirty) applyTemplate(); else if (/^\d{2}-$/.test(edName.value.trim())) edName.value = `${nextNumber(edDir.value.trim())}-`; $("#edRegister")?.closest("label")?.toggleAttribute("hidden", edDir.value.trim().startsWith("Knowledge/Papers/") || edDir.value.trim() === "notes"); });
+      // 从助教回答"存为笔记"带过来的内容
+      if (prefill) {
+        let pf = null; try { pf = JSON.parse(sessionStorage.getItem("kbPrefill") || "null"); sessionStorage.removeItem("kbPrefill"); } catch {}
+        if (pf) {
+          const t = templates.find((x) => x.id === "note") ?? templates[0];
+          let text = t.content.replace(/^title: .*$/m, `title: ${pf.title}`).replace(/^# .*$/m, `# ${pf.title}`);
+          text = text.replace(/## 详细记录\n/, `## 详细记录\n\n${pf.body.trim()}\n`);
+          edText.value = text; editor.fresh = ""; editor.dirty = true; renderPreview();
+        }
+      }
+    }
+    offerDraft();
+    edText.addEventListener("input", () => { editor.dirty = edText.value !== editor.fresh; schedulePreview(); saveDraft(); });
+    edText.addEventListener("keydown", (e) => { if (e.key === "Tab") { e.preventDefault(); const s0 = edText.selectionStart, e0 = edText.selectionEnd; edText.setRangeText("  ", s0, e0, "end"); editor.dirty = true; schedulePreview(); } });
+    $("#edPreviewOn").addEventListener("change", (e) => { $("#edPanes").classList.toggle("no-preview", !e.target.checked); renderPreview(); });
+    $("#edSave").addEventListener("click", saveEditor);
+    editor.save = saveEditor;
+    async function saveEditor() {
+      const relPath = targetPath();
+      if (!editor.path && (!edName.value.trim() || !edDir.value.trim())) return status("⚠️ 请填写文件夹和文件名", "err");
+      if (editor.saving) return;
+      // 改了已有文档就把 updated 改成今天（STANDARD 第 9 节）
+      let content = edText.value;
+      let bumped = false;
+      if (editor.isEdit && content !== editor.fresh) { const next = content.replace(/^updated:\s*\S+/m, `updated: ${today()}`); bumped = next !== content; if (bumped) { content = next; edText.value = content; } }
+      editor.saving = true; $("#edSave").disabled = true;
+      status("保存中…");
+      let j;
+      try {
+        const res = await fetch("/api/note", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: relPath, content, overwrite: Boolean(editor.path), register: Boolean($("#edRegister")?.checked && !$("#edRegister").closest("label").hidden) }) });
+        j = await res.json();
+        if (!res.ok) return status(`⚠️ ${escapeHtml(j.error || res.statusText)}`, "err");
+      } catch (err) { return status(`⚠️ 保存失败：${escapeHtml(err.message)}`, "err"); }
+      finally { editor.saving = false; $("#edSave").disabled = false; }
+      clearDraft();
+      editor.dirty = false; editor.fresh = edText.value;
+      if (!editor.path) { editor.path = j.relPath; editor.isEdit = true; edDir.readOnly = edName.readOnly = true; edTpl?.closest("label")?.remove(); $("#edRegister")?.closest("label")?.remove(); }
+      const dir = j.relPath.slice(0, j.relPath.lastIndexOf("/"));
+      const lines = [`✅ 已保存 <code>${escapeHtml(j.relPath)}</code>`, `索引已重建（${j.stats.documents} 篇文档）`];
+      if (bumped) lines.push(`updated 已改为 ${today()}`);
+      if (j.indexes?.length) lines.push(`论文库目录已刷新：${j.indexes.map(escapeHtml).join("、")}`);
+      if (j.build) lines.push(j.build.ok ? `静态站已重新生成（${j.build.ms} ms）` : `⚠️ 静态站构建失败：${escapeHtml(j.build.message)}`);
+      else lines.push("静态站自动构建已关闭（KB_AUTO_BUILD=0）");
+      await loadTree();
+      const readme = flatFiles.find((f) => f.path === `${dir}/00-README.md`);
+      const r = j.registered;
+      let remind = "";
+      if (r?.status === "added") lines.push(`已登记到 <a href="#/${r.readme}">${escapeHtml(r.readme)}</a>：<code>${escapeHtml(r.row)}</code>`);
+      else if (r && r.status !== "auto" && r.status !== "skip" && r.status !== "exists") remind = `<div class="muted">没能自动登记（${escapeHtml(r.error || r.status)}）：<a href="#/edit/${r.readme}">编辑 ${escapeHtml(r.readme)}</a> 的章节表加一行。</div>`;
+      else if (!r && j.created && !j.relPath.endsWith("00-README.md") && readme && !dir.startsWith("Knowledge/Papers/")) remind = `<div class="muted">新章节还没在目录里登记：<button type="button" class="btn small" id="edRegisterNow">📌 登记到 ${escapeHtml(readme.path)}</button></div>`;
+      const problems = j.problems ?? [];
+      status(`${lines.join(" · ")}${problems.length ? `<div>⚠️ 规范检查有 ${problems.length} 个问题（已保存，建议修正后再保存一次）：</div><ul>${problems.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : ""}${remind}<div><a href="#/${j.relPath}">查看文档 →</a></div>`, problems.length ? "err" : "ok");
+      $("#edRegisterNow")?.addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        try { const rr = await (await fetch("/api/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: j.relPath }) })).json(); e.target.replaceWith(Object.assign(document.createElement("span"), { textContent: rr.status === "added" ? `✅ 已登记：${rr.row}` : `（${rr.error || rr.status}）` })); await loadTree(); } catch (err) { e.target.textContent = `登记失败：${err.message}`; }
+      });
+      if (!problems.length && !remind) setTimeout(() => { if (editor && !editor.dirty) { location.hash = "#/" + j.relPath; toast(`✅ 已保存${r?.status === "added" ? "并登记到 00-README" : ""} · 索引与静态站已重建`); } }, 900);
+    }
+    document.title = `${isEdit ? "编辑" : "新建笔记"} · Learning 知识库`;
+    mainEl.scrollTo(0, 0);
+    if (isMobile()) layout.classList.remove("nav-open");
+    setTimeout(() => edText.focus(), 0);
+  }
+  function closeEditor() { editor = null; }
+  window.addEventListener("beforeunload", (e) => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });
+  $("#newNoteBtn").addEventListener("click", (e) => {
+    // 从文档页点"新建"时默认放进同一个文件夹
+    if (currentPath && currentPath.includes("/")) { e.preventDefault(); location.hash = `#/new?dir=${encodeURIComponent(currentPath.slice(0, currentPath.lastIndexOf("/")))}`; }
+  });
+  /** 订阅服务端的变化事件：别处保存 / 磁盘上改了文件 / 静态站重建 → 刷新目录与当前文档 */
+  function subscribeChanges() {
+    if (!("EventSource" in window)) return;
+    const es = new EventSource("/api/events");
+    es.onmessage = (e) => {
+      let ev; try { ev = JSON.parse(e.data); } catch { return; }
+      if (ev.type === "kb-changed") {
+        loadTree().then(() => { if (!editor && currentPath && (!ev.file || ev.file === currentPath)) route(); }).catch(() => {});
+        if (ev.reason === "watch") toast(`📝 ${ev.file} 已更新，目录已刷新`);
+      } else if (ev.type === "built" && ev.reason === "watch") toast(ev.ok ? `🏗️ 静态站已重新生成（${ev.ms} ms）` : "⚠️ 静态站构建失败，看终端日志");
+    };
+  }
 
   // ---------- 助教 ----------
   const setChat = (open) => { document.body.classList.toggle("chat-open", open); if (open) setTimeout(() => $("#chatInput").focus(), 200); };
@@ -535,6 +777,18 @@
     const body = div.querySelector(".body");
     body.innerHTML = renderMarkdown(text, "") + (done ? "" : `<span class="typing"></span>`);
     postProcess(body);
+    if (done && !STATIC && text.trim() && !div.querySelector(".msg-actions")) {
+      // 把这条回答一键变成 notes/ 下的笔记（带来源问题），进编辑器再改
+      const bar = document.createElement("div"); bar.className = "msg-actions";
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.textContent = "✎ 存为笔记";
+      b.addEventListener("click", () => {
+        const q = (div.previousElementSibling?.classList.contains("user") ? div.previousElementSibling.querySelector(".bubble").textContent : "").trim();
+        const title = (q.split("\n")[0] || "助教回答").replace(/[#*`[\]]/g, "").slice(0, 40);
+        try { sessionStorage.setItem("kbPrefill", JSON.stringify({ title, body: (q ? `> 来源问题：${q.replace(/\n+/g, " ")}\n\n` : "") + text })); } catch {}
+        setChat(false); location.hash = "#/new?dir=notes&prefill=1";
+      });
+      bar.appendChild(b); div.querySelector(".bubble").appendChild(bar);
+    }
   }
   async function sendChat(text) {
     text = (text || "").trim(); if (!text) return;
@@ -600,11 +854,14 @@
   document.addEventListener("keydown", (e) => {
     const typing = ["TEXTAREA", "INPUT"].includes(document.activeElement.tagName);
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.hidden ? openPalette() : closePalette(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && editor) { e.preventDefault(); editor.save?.(); return; }
     if (e.key === "Escape") { closePalette(); layout.classList.remove("nav-open"); if (document.activeElement === input) setChat(false); return; }
     if (typing) return;
     if (e.key === "/") { e.preventDefault(); openPalette(); }
     else if (e.key === "[") layout.classList.toggle(isMobile() ? "nav-open" : "nav-hidden");
     else if (e.key === "]") STATIC ? window.open(LOCAL_URL + location.hash, "_blank") : setChat(!document.body.classList.contains("chat-open"));
+    else if (e.key === "e" && !STATIC && currentPath && canEdit(currentPath)) location.hash = "#/edit/" + currentPath;
+    else if (e.key === "n" && !STATIC) location.hash = currentPath.includes("/") ? `#/new?dir=${encodeURIComponent(currentPath.slice(0, currentPath.lastIndexOf("/")))}` : "#/new";
     else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && currentPath) {
       const sib = siblings(currentPath); const i = sib.findIndex((f) => f.path === currentPath); const t = sib[e.key === "ArrowLeft" ? i - 1 : i + 1]; if (t) location.hash = "#/" + t.path;
     }
@@ -614,11 +871,13 @@
   if (STATIC) {
     // 公网静态站没有后端：隐藏导入，助教按钮跳到本机版（Mac 上开机自启的 http://localhost:8787）
     $("#importBtn").hidden = true;
+    $("#newNoteBtn").hidden = true;
     const btn = $("#toggleChat"); btn.textContent = "💬 助教（本机）"; btn.title = "AI 助教只在你电脑上的本机版可用";
     btn.replaceWith(btn.cloneNode(true));
     $("#toggleChat").addEventListener("click", () => window.open(LOCAL_URL + location.hash, "_blank"));
   } else {
     fetch("/api/health").then((r) => r.json()).then((h) => { $("#chatModel").textContent = h.model; }).catch(() => {});
+    subscribeChanges();
   }
   loadTree().then(route).catch((err) => { $("#stats").textContent = "目录加载失败：" + err.message; contentEl.innerHTML = `<div class="doc-head"><h1>目录加载失败</h1></div><p>${escapeHtml(err.message)}</p><p>请确认服务已启动（终端里 ./start.sh），然后刷新。</p>`; });
 })();
