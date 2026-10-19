@@ -51,6 +51,21 @@ function stripQuotes(s) {
   return s.replace(/^["']|["']$/g, "");
 }
 
+// ---------- STANDARD.md 的硬规则（检查器与网页编辑器的实时提示共用，/api/rules 对外提供） ----------
+
+/** 第 3 节：每个文件必填的 frontmatter 字段。 */
+export const FRONTMATTER_FIELDS = ["title", "type", "topic", "level", "tags", "status", "created", "updated"];
+
+/** 第 4/5/6 节：各 type 的固定 H2 标题（文字与顺序都固定）。 */
+export const SECTION_RULES = {
+  tutorial: ["学习目标", "前置知识", "核心概念", "详细讲解", "动手练习", "常见错误与排查", "小结", "自测题", "参考资料"],
+  "paper-note": ["论文信息", "一句话总结", "背景与动机", "方法", "实验", "优点与不足", "与知识库的关联", "复现清单", "我的问题与想法"],
+  hardware: ["设备概览", "关键参数", "安全须知", "系统组成", "安装与启动流程", "基本操作", "编程接口", "常见故障与排查", "维护与关机", "参考资料"],
+};
+
+/** 第 2 节：章节文件名 NN-kebab-case.md，目录文件 00-README.md。 */
+export const FILE_NAME_RE = /^(\d{2}-[a-z0-9-]+|00-README)\.md$/;
+
 // ---------- index ----------
 
 export class KnowledgeBase {
@@ -175,18 +190,14 @@ export class KnowledgeBase {
 
   /** Validate every document against STANDARD.md and return problems. */
   check() {
-    const required = {
-      tutorial: ["学习目标", "前置知识", "核心概念", "详细讲解", "动手练习", "常见错误与排查", "小结", "自测题", "参考资料"],
-      "paper-note": ["论文信息", "一句话总结", "背景与动机", "方法", "实验", "优点与不足", "与知识库的关联", "复现清单", "我的问题与想法"],
-      hardware: ["设备概览", "关键参数", "安全须知", "系统组成", "安装与启动流程", "基本操作", "编程接口", "常见故障与排查", "维护与关机", "参考资料"],
-    };
+    const required = SECTION_RULES;
     const problems = [];
     for (const d of this.docs.values()) {
       const where = d.relPath;
       if (where.startsWith("templates/")) continue; // 模板允许占位内容
       const m = d.meta;
       const prose = d.body.replace(/^\s*```[\s\S]*?^\s*```\s*$/gm, "").replace(/`[^`\n]*`/g, ""); // 去掉代码块与行内代码后再查标题和链接
-      for (const f of ["title", "type", "topic", "level", "tags", "status", "created", "updated"]) {
+      for (const f of FRONTMATTER_FIELDS) {
         if (m[f] == null || (Array.isArray(m[f]) && !m[f].length)) problems.push({ file: where, problem: `frontmatter 缺少 ${f}` });
       }
       if (!/^(\d{2}-[a-z0-9-]+|\d{2}-README|README)\.md$/.test(path.basename(where)) && !["STANDARD.md", "README.md"].includes(where) && !where.startsWith("templates/"))

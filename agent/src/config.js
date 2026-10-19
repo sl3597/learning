@@ -31,6 +31,13 @@ export const PAPER_DOMAINS = {
 export const PORT = Number(process.env.PORT ?? 8787);
 
 /**
+ * "保存即重建"：网页里保存笔记（或任何 .md 变化）后，本机服务重建索引、刷新论文库目录，并把 GitHub Pages
+ * 同款静态站重新生成到 KB_DIST（默认 <知识库>/dist，已 gitignore）。KB_AUTO_BUILD=0 只重建索引、不生成静态站。
+ */
+export const DIST_DIR = path.resolve(process.env.KB_DIST ?? path.join(KB_ROOT, "dist"));
+export const AUTO_BUILD = process.env.KB_AUTO_BUILD !== "0";
+
+/**
  * Which credential the SDK will use, in its own precedence order: env API key, env auth token,
  * then the OAuth profile written by `ant auth login`. null = chat / paper import will fail.
  */

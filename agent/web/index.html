@@ -11,6 +11,7 @@
 </head>
 <body>
   <div id="progress" class="progress-bar"></div>
+  <div id="toast" class="toast" hidden></div>
 
   <header class="topbar">
     <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）">☰</button>
@@ -20,6 +21,7 @@
     </button>
     <div class="topbar-actions">
       <a id="browseBtn" class="btn ghost" href="#/browse">🗂 分类浏览</a>
+      <a id="newNoteBtn" class="btn ghost" href="#/new" title="在知识库里新建一篇笔记（保存后自动重建）">✎ 新建笔记</a>
       <button id="importBtn" class="btn ghost">＋ 导入论文</button>
       <button id="themeBtn" class="icon-btn" title="切换深浅色">🌙</button>
       <button id="toggleChat" class="btn primary">💬 助教</button>
@@ -86,7 +88,7 @@
     <div class="palette-box">
       <input id="paletteInput" type="search" placeholder="搜索标题、段落、命令…（支持中英文）" autocomplete="off" />
       <div id="paletteResults" class="palette-results"></div>
-      <div class="palette-foot muted small">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
+      <div class="palette-foot muted small" id="paletteFoot">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
     </div>
   </div>
 

@@ -30,7 +30,7 @@ const copy = (src, out, rel) => {
   fs.cpSync(src, path.join(out, rel), { recursive: true });
 };
 
-export function buildStatic(out = path.join(ROOT, "dist"), kb = new KnowledgeBase(ROOT)) {
+export function buildStatic(out = path.join(ROOT, "dist"), kb = new KnowledgeBase()) {
   kb.reindex();
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
@@ -53,20 +53,20 @@ export function buildStatic(out = path.join(ROOT, "dist"), kb = new KnowledgeBas
   for (const relPath of kb.docs.keys()) write(out, `data/doc/${relPath}.json`, JSON.stringify(kb.docPayload(relPath)));
   write(out, "data/search.json", JSON.stringify(kb.chunks));
 
-  // 知识库里的图片等附件（Markdown 里的相对路径在页面上解析为 kb/<路径>）
+  // 知识库里的图片等附件（Markdown 里的相对路径在页面上解析为 kb/<路径>）；以 kb.root 为准，服务和测试可能换根目录
   let assets = 0;
   const walk = (dir) => {
-    for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    for (const e of fs.readdirSync(path.join(kb.root, dir), { withFileTypes: true })) {
       if (e.name.startsWith(".")) continue;
       const rel = `${dir}/${e.name}`;
       if (e.isDirectory()) walk(rel);
       else if (!e.name.endsWith(".md")) {
-        copy(path.join(ROOT, rel), out, `kb/${rel}`);
+        copy(path.join(kb.root, rel), out, `kb/${rel}`);
         assets++;
       }
     }
   };
-  walk("Knowledge");
+  if (fs.existsSync(path.join(kb.root, "Knowledge"))) walk("Knowledge");
 
   return { out, documents: kb.docs.size, chunks: kb.chunks.length, assets };
 }

@@ -9,6 +9,7 @@
 | 📖 网页阅读 | `http://localhost:8787` | 文档站风格：左侧分组目录、右侧页内大纲、阅读进度、上一章/下一章、代码一键复制、提示块卡片、KaTeX 公式、Mermaid 图、深浅色切换、⌘K 搜索面板；渲染库随 `npm install` 本地安装，不依赖外网 CDN |
 | 🔍 全文检索 | 顶部搜索框 / `/api/search` | BM25，支持中英文混合 |
 | 💬 学习助教 | 右侧聊天面板 / `npm run ask` | Claude 带工具：先检索知识库再回答，答案附文档链接；可按要求把内容写成笔记 |
+| ✏️ 网页写笔记 | "✎ 新建笔记"（快捷键 `n`）/ 文档页"✎ 编辑"（`e`）/ `POST /api/note` | 选文件夹和模板（教程 / 论文笔记 / 硬件 / 自由笔记），左写右预览，边写边按 STANDARD 实时检查（缺字段、固定段落、坏链接、未标语言的代码块…），一键插入提示块 / 表格 / 折叠答案 / 章节相对链接，草稿自动暂存，⌘S 保存。**保存即重建**：写文件 → 重建索引 → 刷新论文库目录 → 新章节自动登记到所在文件夹的 `00-README.md` → 重新生成静态站（`dist/`）→ 通过 `/api/events` 通知所有打开的页面刷新。助教的回答可一键"存为笔记" |
 | 📄 论文导入 | "导入论文"按钮 / `npm run paper` | 读取 PDF，按 STANDARD 第 5 节模板生成论文笔记，保存到 `Knowledge/Papers/<领域>/`，自动填写 `related` 并刷新论文库目录 |
 | 🔗 论文 ↔ 知识 | 文档页底部 / `npm run papers` | 论文的 `related` 反查成"相关论文"，显示在每个知识章节底部；论文库 `00-README.md` 的表格自动生成 |
 | 🧾 问答沉淀 | 自动 | 每次有价值的问答会追加到 `notes/qa-log.md` |
@@ -67,17 +68,21 @@ flowchart LR
     IDX[kb.js<br/>索引 / BM25 / 规范检查]
     CH[agent.js<br/>Claude + 工具循环]
     PP[paper.js<br/>PDF → 论文笔记]
-    SV[server.js<br/>HTTP + SSE]
-    WEB[web/<br/>阅读器 + 聊天 + 导入]
+    NT[notes.js<br/>网页笔记保存]
+    SV[server.js<br/>HTTP + SSE + 保存即重建]
+    WEB[web/<br/>阅读器 + 编辑器 + 聊天 + 导入]
   end
   MD --> IDX
   IDX --> CH
   IDX --> PP
   CH --> SV
   PP --> SV
+  NT --> SV
   SV <--> WEB
   CH -- save_note / log_qa --> MD
   PP -- 写入笔记 --> MD
+  NT -- 写入笔记 --> MD
+  SV -- 重新生成 --> DIST[dist/ 静态站]
 ```
 
 ### 助教可用的工具
@@ -88,6 +93,8 @@ flowchart LR
 | `read_document` | 读取整篇文档（末尾附"反向关联"的论文） | 只读，限知识库内 |
 | `list_documents` | 列出文档元数据 | 只读 |
 | `save_note` | 写入符合标准的 Markdown | 只能写 `.md`；路径不能越出知识库；不能改 `STANDARD.md` / `templates/`；默认不覆盖 |
+
+网页写接口（`POST /api/note`、`/api/register`、`/api/chat`、`/api/paper`）只接受同源页面发来的 JSON 请求（校验 `Origin` / `Sec-Fetch-Site` / `content-type`），浏览器里的其他网站不能借你的本机服务写文件。
 | `log_qa` | 追加问答摘要到 `notes/qa-log.md` | 只追加 |
 
 ### 模型与参数
@@ -102,11 +109,13 @@ flowchart LR
 | `KB_FALLBACKS` | `1` | 服务端拒答回退（被安全策略拒答时自动改用 claude-opus-4-8 重试，仅 Claude API 可用）；设为 `0` 关闭 |
 | `KB_ROOT` | `../` | 知识库根目录 |
 | `PORT` | `8787` | 端口 |
+| `KB_AUTO_BUILD` | `1` | 保存笔记或磁盘上 `.md` 变化后自动重新生成静态站；`0` 只重建索引 |
+| `KB_DIST` | `<知识库>/dist` | 自动构建的静态站输出目录（已 gitignore） |
 
 ## 工作流程建议
 
 1. **学习**：按各主题 `00-README.md` 的路线阅读；遇到不懂的就问助教（勾选"附带当前文档路径"，助教会结合你正在读的章节回答）。
-2. **沉淀**：让助教"把刚才的解释整理成笔记保存到 notes/"，它会按标准写文件；定期把 `notes/` 里有价值的内容合并进正式章节。
+2. **沉淀**：自己写就点"✎ 新建笔记"（或在文档页点"✎ 编辑"），保存后索引、论文库目录、静态站都会自动重建；也可以让助教"把刚才的解释整理成笔记保存到 notes/"。定期把 `notes/` 里有价值的内容合并进正式章节。
 3. **读论文**：导入到 `Knowledge/Papers/<领域>/` → 人工复核数字、结论与 `related` → 把 `status` 改成 `reviewed`（论文库目录自动更新，不用手动登记）。
 4. **检查**：提交前跑 `./start.sh ci`；启用钩子后 commit / push 会自动跑。
 
@@ -123,6 +132,7 @@ agent/
 │   ├── agent.js     # 聊天 Agent 与工具
 │   ├── paper.js     # 论文导入
 │   ├── papers.js    # 论文库目录生成（related → 反向索引）
+│   ├── notes.js     # 网页笔记保存：路径校验、写入、重建索引、刷新论文库目录、规范检查
 │   ├── server.js    # HTTP / SSE 服务
 │   └── cli.js       # 命令行
 ├── scripts/

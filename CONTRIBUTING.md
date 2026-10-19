@@ -40,8 +40,8 @@ git switch -c paper/vla-openvla
 
 ### 写知识章节
 
-1. 复制 `templates/tutorial-template.md`，按 STANDARD.md 第 4 节填写。
-2. 在所在文件夹 `00-README.md` 的章节表登记。
+1. 复制 `templates/tutorial-template.md`，按 STANDARD.md 第 4 节填写；或在本机版网页点"✎ 新建笔记"（选模板、左写右预览、⌘S 保存，保存后自动重建索引与静态站，规范问题直接显示）。
+2. 在所在文件夹 `00-README.md` 的章节表登记（网页保存后会提示并给出编辑链接）。
 3. `./start.sh ci`。
 
 ### 加一篇论文
