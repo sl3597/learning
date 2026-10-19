@@ -17,7 +17,7 @@ sources:
   - https://arxiv.org/abs/2503.14734
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-19
 ---
 
 # 代表性 VLA 模型纵览
@@ -103,6 +103,8 @@ Physical Intelligence 的 π0 用 PaliGemma（3B）做骨干，另加一个"动�
 - **GR00T N1**（2025.03）：NVIDIA 面向人形机器人的开源基座模型。"双系统"设计：System 2 是 Eagle-2 VLM 负责理解，System 1 是扩散 Transformer 负责高频动作。总参数 2.2B，训练数据混合真机、仿真和合成视频。
 
 > 💡 要点：趋势很清楚——**骨干用现成 VLM、动作用连续生成头、数据越杂越好**。
+
+> 🔗 关联：π0、π0-FAST、π0.5 以及之后的 π*0.6 在 [π 系列模型专题](../Pi/00-README.md) 里各有一章拆解，含 openpi 实战。
 
 ### 5.8 该从哪个入手
 

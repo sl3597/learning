@@ -7,7 +7,7 @@ level: all
 tags: [VLA, 机器人学习, 目录, 学习路线]
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-19
 ---
 
 # VLA 基础：从零开始理解视觉-语言-动作模型
@@ -72,6 +72,7 @@ flowchart TD
 ## 与其他主题的关系
 
 - **前置**：[Linux 命令](../../LinuxCommand/00-README.md) —— 训练和部署 VLA 都在 Linux 服务器上进行，第 08、09 章会大量用到命令行。
+- **后续**：[π 系列模型专题](../Pi/00-README.md) —— 第 05 章里的 π0 / π0.5 展开成六章：架构、FAST、协同训练、强化学习与 openpi 实战。
 - **后续**：[ForceVLA 论文专题](../ForceVLA/00-README.md) —— 第 10 章直接引向这篇论文，它在 π0 基础上加入了力觉信息。
 - **后续**：[WAM 世界模型](../../WAM/00-README.md) —— 在 VLA 之上加入"预测未来"的能力：世界模型如何与 VLA 融合、做规划与数据生成。
 

@@ -7,7 +7,7 @@ level: all
 tags: [目录, 学习路线, Linux, VLA, 世界模型]
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-19
 ---
 
 # 知识内容总目录
@@ -19,7 +19,9 @@ updated: 2026-10-17
 ```mermaid
 flowchart TD
   A[LinuxCommand<br/>01~18 章：先会用终端] --> B[VLA/Basic<br/>01~11 章：模型原理]
-  B --> C[VLA/ForceVLA<br/>01~07 章：论文精读]
+  B --> PI[VLA/Pi<br/>01~06 章：π 系列专题]
+  PI --> C[VLA/ForceVLA<br/>01~07 章：论文精读]
+  B --> C
   B --> D[WAM<br/>01~08 章：世界模型]
   C --> D
   A --> U[UR<br/>01~10 章：协作机械臂]
@@ -34,6 +36,7 @@ flowchart TD
 |---|---|---|---|---|
 | 1 | Linux 命令 | [LinuxCommand/00-README.md](LinuxCommand/00-README.md) | beginner → intermediate | ~15 小时 |
 | 2 | VLA 基础 | [VLA/Basic/00-README.md](VLA/Basic/00-README.md) | beginner → intermediate | ~12 小时 |
+| 2.5 | π 系列模型专题 | [VLA/Pi/00-README.md](VLA/Pi/00-README.md) | beginner → advanced | ~6 小时 |
 | 3 | ForceVLA 论文专题 | [VLA/ForceVLA/00-README.md](VLA/ForceVLA/00-README.md) | intermediate | ~8 小时 |
 | 4 | WAM 世界模型 | [WAM/00-README.md](WAM/00-README.md) | intermediate | ~10 小时 |
 | 4.5 | UR 协作机械臂 | [UR/00-README.md](UR/00-README.md) | beginner → advanced | ~12 小时 |
@@ -42,7 +45,7 @@ flowchart TD
 ## 子目录
 
 - [LinuxCommand/00-README.md](LinuxCommand/00-README.md) —— Linux 命令与 Shell
-- [VLA/00-README.md](VLA/00-README.md) —— VLA 总目录（基础 + 论文专题）
+- [VLA/00-README.md](VLA/00-README.md) —— VLA 总目录（基础 + π 系列专题 + ForceVLA 论文专题）
 - [WAM/00-README.md](WAM/00-README.md) —— 世界模型（World Model / World Action Model）
 - [UR/00-README.md](UR/00-README.md) —— UR 协作机械臂：硬件、安全、URScript / RTDE / ROS 2、力控、VLA 数据采集与部署
 - [Papers/00-README.md](Papers/00-README.md) —— 论文库：每篇论文关联到上面的知识章节，章节页底部可反查相关论文
