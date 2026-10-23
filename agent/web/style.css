@@ -112,9 +112,11 @@ button { font-family: inherit; }
 
 /* ========== 布局 ========== */
 .layout { flex: 1; display: grid; grid-template-columns: var(--nav-w) 1fr; min-height: 0; transition: grid-template-columns .2s; }
-.layout.nav-hidden { grid-template-columns: 0 1fr; }
+/* 隐藏目录时侧栏 display:none 后就不再是网格项，正文会成为第一项；所以这里必须只剩一列，不能写成 0 1fr（否则正文被挤进 0 宽的列，整页空白） */
+.layout.nav-hidden { grid-template-columns: 1fr; }
 .nav { overflow: auto; border-right: 1px solid var(--border); background: var(--surface); padding: 12px 10px 40px; }
 .layout.nav-hidden .nav { display: none; }
+.main { grid-column: -2 / -1; }
 .main { overflow: auto; scroll-behavior: smooth; }
 body.chat-open .main { margin-right: var(--chat-w); }
 .page { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail-w); gap: 44px; max-width: 1120px; margin: 0 auto; padding: 32px 40px 120px; }
