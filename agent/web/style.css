@@ -507,7 +507,7 @@ mark { background: color-mix(in srgb, #fbbf24 35%, transparent); color: inherit;
 .palette-results .actions a .ic { color: var(--muted); }
 .palette-foot { padding: 8px 18px; border-top: 1px solid var(--border); }
 
-/* ========== 研究助手抽屉 ========== */
+/* ========== Copilot 抽屉 ========== */
 .chat { position: fixed; top: 56px; right: 0; bottom: 0; width: var(--chat-w); max-width: 100vw; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform .22s ease; z-index: 60; box-shadow: var(--shadow); }
 body.chat-open .chat { transform: translateX(0); }
 body:not(.chat-open) .chat { visibility: hidden; transition: transform .22s ease, visibility 0s .22s; }

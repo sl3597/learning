@@ -3,7 +3,7 @@
 # 用法：
 #   ./start.sh            启动 Web（默认 http://localhost:8787）
 #   ./start.sh test       跑一遍离线自检（索引 / 检索 / 规范检查），不需要 API Key
-#   ./start.sh ask "问题"  命令行直接向助教提问（需要 API Key）
+#   ./start.sh ask "问题"  命令行直接向 Copilot 提问（需要 API Key）
 #   ./start.sh paper <arXiv链接或PDF> [目标文件夹] [topic]   导入论文生成笔记（需要 API Key），默认 Knowledge/Papers/VLA
 #   ./start.sh login      登录 Claude：默认用 Claude Code 登录 Max/Pro 订阅；KB_BACKEND=api 时用 ant auth login
 #   ./start.sh check      只做规范检查
@@ -11,7 +11,7 @@
 #   ./start.sh setup      初始化 git 仓库并启用 .githooks（提交 / 推送前自动跑 CI）
 #   ./start.sh ci         本地 CI：语法 / 密钥 / 守卫 / 规范 / 论文索引 / 测试（--fast 跳过测试）
 #   ./start.sh release [auto|patch|minor|major] [--dry-run]   在 main 上发布：CI → CHANGELOG → 版本号 → 标签
-#   ./start.sh service [install|uninstall|restart|status|logs]  开机自启的本机服务（macOS launchd），含 AI 助教
+#   ./start.sh service [install|uninstall|restart|status|logs]  开机自启的本机服务（macOS launchd），含 Copilot
 #   ./start.sh build      生成 GitHub Pages 静态站到 dist/（只读：阅读 + 搜索）
 set -euo pipefail
 
@@ -220,8 +220,8 @@ PLIST_EOF
     if lsof -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
       echo "⚠️  端口 $PORT 已被占用，改用 PORT=8788 ./start.sh 或先关闭占用的程序"; exit 1
     fi
-    need_key || echo "   （先以只读模式启动：可以阅读和搜索，助教与导入论文暂不可用）"
-    [ "$BACKEND" = "api" ] || echo "🔑 助教与论文导入使用本机 Claude Code 登录的订阅额度（KB_BACKEND=api 可改回 API）"
+    need_key || echo "   （先以只读模式启动：可以阅读和搜索，Copilot 与导入论文暂不可用）"
+    [ "$BACKEND" = "api" ] || echo "🔑 Copilot 与论文导入使用本机 Claude Code 登录的订阅额度（KB_BACKEND=api 可改回 API）"
     echo "🚀 启动 Web：http://localhost:$PORT   （Ctrl+C 停止）"
     # macOS 自动打开浏览器
     if command -v open >/dev/null 2>&1; then (sleep 1.5; open "http://localhost:$PORT") & fi

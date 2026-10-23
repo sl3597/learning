@@ -139,9 +139,9 @@ git branch -d paper/vla-openvla
 | 站点 | 地址 | 内容 | 怎么更新 |
 |---|---|---|---|
 | 公网阅读站（GitHub Pages） | `https://<GitHub 用户名>.github.io/<仓库名>/` | 阅读、目录、搜索、论文关联（只读） | `git push` 到 `main`：`.github/workflows/pages.yml` 跑完整 CI → `build-static.js` 构建 → 发布。CI 不过就不发布 |
-| 本机完整版（launchd 开机自启） | `http://localhost:8787` | 上面全部 + AI 助教 + 论文导入（Max 订阅） | 服务直接读工作区文件，改完 Markdown 自动重建索引；改了 `agent/` 代码后 `./start.sh service restart` |
+| 本机完整版（launchd 开机自启） | `http://localhost:8787` | 上面全部 + Copilot + 论文导入（Max 订阅） | 服务直接读工作区文件，改完 Markdown 自动重建索引；改了 `agent/` 代码后 `./start.sh service restart` |
 
-公网站右上角的"助教（本机）"会在新标签页打开本机版的同一页面，所以在自己的 Mac 上可以无缝切换。
+公网站右上角的"Copilot（本机）"会在新标签页打开本机版的同一页面，所以在自己的 Mac 上可以无缝切换。
 
 本机服务命令：`./start.sh service install | status | restart | logs | uninstall`。
 

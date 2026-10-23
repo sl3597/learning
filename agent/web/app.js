@@ -1,4 +1,4 @@
-/* Physical AI Research · 知识库前端：阅读器 + 论文库 + 关联图 + 搜索面板 + 研究助手 + 论文导入（纯静态，无构建步骤） */
+/* Physical AI Research · 知识库前端：阅读器 + 论文库 + 关联图 + 搜索面板 + Copilot + 论文导入（纯静态，无构建步骤） */
 (() => {
   const $ = (s) => document.querySelector(s);
   const layout = $("#layout");
@@ -394,7 +394,7 @@
     const resume = lastDoc();
     const resumeOk = resume && flatFiles.some((f) => f.path === resume.path);
     const kIndex = knowledge?.files.find(isReadme);
-    const keys = [["⌘K", "搜索"], ["[", "目录"], ["]", "研究助手"], ["p", "论文库"], ["g", "关联图"], ["← →", "上一章 / 下一章"], ...(STATIC ? [] : [["e", "编辑当前文档"], ["n", "新建笔记"], ["⌘S", "保存"]])];
+    const keys = [["⌘K", "搜索"], ["[", "目录"], ["]", "Copilot"], ["p", "论文库"], ["g", "关联图"], ["← →", "上一章 / 下一章"], ...(STATIC ? [] : [["e", "编辑当前文档"], ["n", "新建笔记"], ["⌘S", "保存"]])];
     return `
       <section class="hero">
         <div class="eyebrow">Physical AI · Research Workspace</div>
@@ -833,7 +833,7 @@
     contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Search</div><h1>搜索</h1></div>
       <form class="search-bar" id="searchForm">${icon("search")}<input id="searchQ" class="q-input big" type="search" value="${escapeHtml(q)}" placeholder="搜索章节、论文、命令…（中英文均可）" autocomplete="off" /><button class="btn primary" type="submit">搜索</button></form>
       <div class="count-line">${hits.length} hits · ${groups.size} documents</div>
-      ${groups.size ? [...groups.values()].map(groupHtml).join("") : `<div class="browse-empty"><p>没有结果。换个关键词试试（支持中英文混搜），或者问研究助手。</p></div>`}`;
+      ${groups.size ? [...groups.values()].map(groupHtml).join("") : `<div class="browse-empty"><p>没有结果。换个关键词试试（支持中英文混搜），或者问 Copilot。</p></div>`}`;
     $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#searchQ").value.trim(); if (v) location.hash = "#/search=" + encodeURIComponent(v); });
     document.title = `搜索 ${q} · ${APP}`; highlightActive(); mainEl.scrollTo(0, 0);
   }
@@ -1048,7 +1048,7 @@
       applyTemplate();
       edTpl.addEventListener("change", () => { if (editor.dirty && !confirm("切换模板会清空当前内容，继续？")) { return; } applyTemplate(); });
       edDir.addEventListener("change", () => { if (!editor.dirty) applyTemplate(); else if (/^\d{2}-$/.test(edName.value.trim())) edName.value = `${nextNumber(edDir.value.trim())}-`; $("#edRegister")?.closest("label")?.toggleAttribute("hidden", edDir.value.trim().startsWith("Knowledge/Papers/") || edDir.value.trim() === "notes"); });
-      // 从研究助手回答"存为笔记"带过来的内容
+      // 从 Copilot 回答"存为笔记"带过来的内容
       if (prefill) {
         let pf = null; try { pf = JSON.parse(sessionStorage.getItem("kbPrefill") || "null"); sessionStorage.removeItem("kbPrefill"); } catch {}
         if (pf) {
@@ -1130,7 +1130,7 @@
     };
   }
 
-  // ---------- 研究助手 ----------
+  // ---------- Copilot ----------
   const setChat = (open) => { document.body.classList.toggle("chat-open", open); if (open) setTimeout(() => $("#chatInput").focus(), 200); };
   $("#toggleChat").addEventListener("click", () => setChat(!document.body.classList.contains("chat-open")));
   $("#closeChat").addEventListener("click", () => setChat(false));
@@ -1161,7 +1161,7 @@
         const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.innerHTML = `${icon("edit")}存为笔记`;
         b.addEventListener("click", () => {
           const q = (div.previousElementSibling?.classList.contains("user") ? div.previousElementSibling.querySelector(".bubble").textContent : "").trim();
-          const title = (q.split("\n")[0] || "研究助手回答").replace(/[#*`[\]]/g, "").slice(0, 40);
+          const title = (q.split("\n")[0] || "Copilot 回答").replace(/[#*`[\]]/g, "").slice(0, 40);
           try { sessionStorage.setItem("kbPrefill", JSON.stringify({ title, body: (q ? `> 来源问题：${q.replace(/\n+/g, " ")}\n\n` : "") + text })); } catch {}
           setChat(false); location.hash = "#/new?dir=notes&prefill=1";
         });
@@ -1259,7 +1259,7 @@
     // 公网静态站没有后端：隐藏导入与写笔记，助手按钮跳到本机版（Mac 上开机自启的 http://localhost:8787）
     $("#importBtn").hidden = true;
     $("#newNoteBtn").hidden = true;
-    const btn = $("#toggleChat"); btn.innerHTML = `${icon("chat")}研究助手（本机）`; btn.title = "AI 研究助手只在你电脑上的本机版可用";
+    const btn = $("#toggleChat"); btn.innerHTML = `${icon("chat")}Copilot（本机）`; btn.title = "Copilot 只在你电脑上的本机版可用";
     btn.replaceWith(btn.cloneNode(true));
     $("#toggleChat").addEventListener("click", () => window.open(LOCAL_URL + location.hash, "_blank"));
   } else {

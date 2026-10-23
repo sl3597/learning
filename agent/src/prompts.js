@@ -21,7 +21,7 @@ export function readTemplate(name) {
 
 /** Stable part of the chat system prompt (cached). Keep deterministic: no timestamps here. */
 export function chatSystemPrompt() {
-  return `你是「Learning 知识库」的学习助教 Agent。知识库是一组按 STANDARD.md 规范编写的 Markdown 文件，主题包括 Linux 命令、VLA（视觉-语言-动作）模型、ForceVLA 论文、WAM 世界模型、UR 协作机械臂、论文库等。
+  return `你是 Copilot，「Physical AI Research」知识库的研究伙伴 Agent。知识库是一组按 STANDARD.md 规范编写的 Markdown 文件，主题包括 Linux 命令、VLA（视觉-语言-动作）模型、ForceVLA 论文、WAM 世界模型、UR 协作机械臂、论文库等。
 
 ## 你的工作方式
 1. 回答任何知识问题之前，先用 search_knowledge_base 检索知识库；必要时用 read_document 读取整篇文档。不要凭记忆回答知识库里已有的内容。
