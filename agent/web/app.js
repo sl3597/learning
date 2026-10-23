@@ -1,4 +1,4 @@
-/* Learning 知识库前端：文档站风格阅读器 + 搜索面板 + 助教抽屉 + 论文导入 */
+/* Physical AI Research · 知识库前端：阅读器 + 论文库 + 关联图 + 搜索面板 + 研究助手 + 论文导入（纯静态，无构建步骤） */
 (() => {
   const $ = (s) => document.querySelector(s);
   const layout = $("#layout");
@@ -7,6 +7,7 @@
   const tocEl = $("#toc");
   const mainEl = $("#main");
   const chatLog = $("#chatLog");
+  const APP = "Physical AI Research";
   let tree = null;
   let flatFiles = [];
   let currentPath = "";
@@ -14,7 +15,7 @@
   let editor = null; // 打开中的笔记编辑器 { path, dirty }（见"笔记编辑器"一节）
   const isMobile = () => window.matchMedia("(max-width: 900px)").matches;
 
-  // ---------- 数据来源：本机服务（/api，含助教）或静态站（data/*.json，GitHub Pages，只读）----------
+  // ---------- 数据来源：本机服务（/api，含助手）或静态站（data/*.json，GitHub Pages，只读）----------
   const STATIC = window.KB_STATIC === true;
   const LOCAL_URL = "http://localhost:8787/";
   const getJSON = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(`${r.status} ${u}`); return r.json(); };
@@ -33,13 +34,53 @@
   const hasMarked = typeof window.marked !== "undefined";
   const hasHljs = typeof window.hljs !== "undefined";
 
+  // ---------- 图标：内联 SVG（不依赖图标字体与外网）----------
+  const ICONS = {
+    menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+    home: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    papers: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/>',
+    graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7 7.6l3.6 8M17 7.6l-3.6 8M7.5 6h9"/>',
+    filter: '<polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5 22 3"/>',
+    search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    flask: '<path d="M9 3h6"/><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3"/><path d="M7 15h10"/>',
+    x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+    bot: '<rect x="3" y="10" width="18" height="11" rx="2.5"/><circle cx="12" cy="4.5" r="1.8"/><path d="M12 6.3V10"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    arm: '<path d="M4 21h9"/><path d="M8.5 21v-5.5l5-5.5"/><circle cx="8.5" cy="15.5" r="2"/><circle cx="13.5" cy="10" r="2"/><path d="M15 8.6l4.2-3.2"/><circle cx="19.6" cy="5" r="1.4"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+    folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+    map: '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
+    book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    ruler: '<path d="M21.3 8.7l-6-6L2.7 15.3l6 6z"/><path d="M12 6l2 2M9 9l2 2M6 12l2 2"/>',
+    question: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/>',
+    external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+    layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.3 14.3 7.8 16.2 9.7 9.7 16.2 7.8"/>',
+  };
+  const icon = (name, cls = "") => `<svg class="ic${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ICONS.folder}</svg>`;
+  document.querySelectorAll("[data-icon]").forEach((el) => el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon)));
+
   // ---------- 主题 ----------
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
   function applyTheme(t) {
     document.documentElement.dataset.theme = t;
     $("#hljsLight").disabled = t === "dark";
     $("#hljsDark").disabled = t !== "dark";
-    $("#themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+    $("#themeBtn").innerHTML = icon(t === "dark" ? "sun" : "moon");
     if (window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: t === "dark" ? "dark" : "neutral", securityLevel: "loose" }); } catch {} }
   }
   const initialTheme = store.get("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -100,8 +141,10 @@
     currentPath = prev; return html;
   }
 
-  const CALLOUTS = [["💡", "tip", "要点"], ["⚠️", "warn", "注意"], ["❓", "warn", "待解决"], ["🔍", "deep", "深入"], ["🔗", "info", "关联"], ["📌", "info", "提示"]];
+  // 提示块前缀与 STANDARD.md 第 7.3 节一致；❓ 单独成类，右栏"研究状态"会把它们列出来
+  const CALLOUTS = [["💡", "tip", "要点"], ["⚠️", "warn", "注意"], ["❓", "question", "待解决"], ["🔍", "deep", "深入"], ["🔗", "info", "关联"], ["📌", "info", "提示"]];
   function postProcess(root) {
+    let qn = 0;
     root.querySelectorAll("blockquote").forEach((bq) => {
       const p = bq.querySelector("p"); if (!p) return;
       const text = p.textContent.trim();
@@ -110,6 +153,7 @@
           bq.classList.add("callout", cls);
           p.innerHTML = p.innerHTML.replace(emoji, "").replace(/^\s*(要点|注意|待解决|深入|关联|提示)\s*[：:]\s*/, "");
           const t = document.createElement("span"); t.className = "callout-title"; t.textContent = `${emoji} ${label}`; bq.insertBefore(t, p);
+          if (cls === "question" && root === contentEl) bq.id = `q-${++qn}`;
           break;
         }
       }
@@ -123,23 +167,23 @@
     if (window.mermaid && root.querySelector(".mermaid")) mermaid.run({ nodes: root.querySelectorAll(".mermaid") }).catch(() => {});
   }
 
-  // ---------- 分类元数据：侧栏、首页、分类浏览共用 ----------
-  // 顶层文件夹 → 短名、图标、主题色、学习顺序；没登记的文件夹自动用它目录页的标题
+  // ---------- 分类元数据：侧栏、总览、论文库、关联图、分类浏览共用 ----------
+  // 顶层文件夹 → 短名、图标（ICONS 里的键）、主题色、学习顺序；没登记的文件夹自动用它目录页的标题
   const SECTIONS = {
-    LinuxCommand: { label: "Linux 命令", icon: "🐧", color: "#16a34a", order: 1 },
-    VLA: { label: "VLA 模型", icon: "🤖", color: "#4f46e5", order: 2 },
-    WAM: { label: "世界模型", icon: "🌍", color: "#0891b2", order: 3 },
-    UR: { label: "UR 机械臂", icon: "🦾", color: "#ea580c", order: 4 },
-    Papers: { label: "论文库", icon: "📄", color: "#9333ea", order: 90, library: true },
+    LinuxCommand: { label: "Linux 命令", en: "Linux & Shell", icon: "terminal", color: "#0d9488", order: 1 },
+    VLA: { label: "VLA 模型", en: "Vision-Language-Action", icon: "bot", color: "#2563eb", order: 2 },
+    WAM: { label: "世界模型", en: "World Models", icon: "globe", color: "#7c3aed", order: 3 },
+    UR: { label: "UR 机械臂", en: "Robot Arm & Deployment", icon: "arm", color: "#ea580c", order: 4 },
+    Papers: { label: "论文库", en: "Paper Library", icon: "papers", color: "#475569", order: 90, library: true },
   };
   // 子文件夹（相对 Knowledge/）→ 短名与图标；登记顺序就是显示顺序（论文领域与学习路线对齐）
   const SUBS = {
     "VLA/Basic": { label: "基础教程" },
     "VLA/Pi": { label: "π 系列专题" },
     "VLA/ForceVLA": { label: "ForceVLA 精读" },
-    "Papers/VLA": { label: "VLA 论文", icon: "🤖" },
-    "Papers/WAM": { label: "世界模型论文", icon: "🌍" },
-    "Papers/Robotics": { label: "机器人学习论文", icon: "🛠" },
+    "Papers/VLA": { label: "VLA 论文", icon: "bot" },
+    "Papers/WAM": { label: "世界模型论文", icon: "globe" },
+    "Papers/Robotics": { label: "机器人学习论文", icon: "tool" },
   };
   const subKey = (d) => d.path.replace(/^Knowledge\//, "");
   const subRank = (d) => { const i = Object.keys(SUBS).indexOf(subKey(d)); return i < 0 ? 99 : i; };
@@ -155,18 +199,29 @@
   const sortFiles = (files) => [...files].sort((a, b) => (a.chapter ?? 99) - (b.chapter ?? 99) || a.name.localeCompare(b.name));
   const minutesOf = (t) => { const m = String(t ?? "").match(/(\d+(?:\.\d+)?)\s*(min|h)/i); return m ? Math.round(Number(m[1]) * (m[2].toLowerCase() === "h" ? 60 : 1)) : 0; };
   const fmtTime = (min) => (min >= 60 ? `${Math.round(min / 6) / 10} 小时` : `${min} 分钟`);
+  /** 章节标题去掉副标题与括号，用在芯片、关联图标签这类窄地方 */
+  const shortTitle = (t, n = 16) => { const s = String(t).replace(/[（(].*?[)）]/g, "").split(/[：:—]/)[0].trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+  const byPath = (p) => flatFiles.find((f) => f.path === p);
+  const relatedDocs = (f) => (f.related || []).map(byPath).filter(Boolean);
+  /** 论文所在领域：Knowledge/Papers/<领域>/，精读专题（如 VLA/ForceVLA）记为 _deep */
+  const domainOf = (f) => (f.path.startsWith("Knowledge/Papers/") ? f.path.split("/")[2] : "_deep");
   let knowledge = null;
   let sections = [];
   function sectionMeta(dir) {
     const m = SECTIONS[dir.name];
     const readme = dir.files.find(isReadme);
     const fallback = readme ? readme.title.replace(/[（(].*?[)）]/g, "").replace(/(主题)?(总)?(目录|总览|学习路线)$/, "").trim() : dir.name;
-    return { key: dir.name, label: m?.label ?? fallback, icon: m?.icon ?? "📁", color: m?.color ?? "#64748b", order: m?.order ?? 50, library: Boolean(m?.library), readme, dir };
+    return { key: dir.name, label: m?.label ?? fallback, en: m?.en ?? "", icon: m?.icon ?? "folder", color: m?.color ?? "#64748b", order: m?.order ?? 50, library: Boolean(m?.library), readme, dir };
   }
   const subLabel = (d) => SUBS[subKey(d)]?.label ?? sectionMeta(d).label;
+  const subIcon = (d, fallback) => SUBS[subKey(d)]?.icon ?? fallback;
   /** 文档所在的顶层主题；根目录的 README / STANDARD 归到"关于" */
   const sectionOf = (path) => { const p = path.split("/"); return p[0] === "Knowledge" && p.length > 2 ? sections.find((s) => s.key === p[1]) ?? null : null; };
+  const libSection = () => sections.find((s) => s.library) ?? null;
   const firstChapter = (d) => sortFiles(d.files).find((f) => !isReadme(f)) ?? d.dirs.map(firstChapter).find(Boolean) ?? null;
+  /** flatFiles 去重（侧栏里同一文件可能登记两次），并排除模板 */
+  const uniqFiles = () => { const seen = new Set(); return flatFiles.filter((f) => !seen.has(f.path) && seen.add(f.path) && !f.path.startsWith("templates/")); };
+  const docsOf = () => allFiles(knowledge).filter((f) => !isReadme(f));
 
   // ---------- 侧栏 ----------
   // 用户手动展开的分组会记住；当前文档所在的分组总是展开
@@ -178,19 +233,20 @@
     flatFiles = []; treeEl.innerHTML = "";
     const heading = (t) => Object.assign(document.createElement("div"), { className: "nav-heading", textContent: t });
     const kIndex = knowledge?.files.find(isReadme);
-    treeEl.appendChild(heading("学习路线"));
-    if (kIndex) treeEl.appendChild(fileLink(kIndex, "🗺️", "总路线图"));
+    treeEl.appendChild(heading("研究方向"));
+    if (kIndex) treeEl.appendChild(fileLink(kIndex, "map", "总路线图"));
     for (const s of sections.filter((x) => !x.library)) treeEl.appendChild(groupNode(s.dir, s));
     for (const s of sections.filter((x) => x.library)) {
       // 论文库：领域子目录直接作为分组，层级更浅
       treeEl.appendChild(heading(s.label));
-      if (s.readme) treeEl.appendChild(fileLink(s.readme, "📚", "论文库总览"));
-      for (const sub of sortDirs(s.dir.dirs)) treeEl.appendChild(groupNode(sub, { ...s, label: subLabel(sub), icon: SUBS[subKey(sub)]?.icon ?? s.icon }));
+      if (s.readme) treeEl.appendChild(fileLink(s.readme, "papers", "论文库总览"));
+      for (const sub of sortDirs(s.dir.dirs)) treeEl.appendChild(groupNode(sub, { ...s, label: subLabel(sub), icon: subIcon(sub, s.icon) }));
     }
     const about = tree.files.filter((f) => /^(README|STANDARD)\.md$/.test(f.path));
-    if (about.length) { treeEl.appendChild(heading("关于")); for (const f of about) treeEl.appendChild(fileLink(f, f.path === "README.md" ? "📘" : "📏")); }
-    const all = allFiles(knowledge).filter((f) => !isReadme(f));
-    $("#stats").textContent = `${all.length} 篇文档 · ${all.filter((f) => f.type === "paper-note").length} 篇论文 · ${all.filter(isDone).length} 篇已复核`;
+    if (about.length) { treeEl.appendChild(heading("关于")); for (const f of about) treeEl.appendChild(fileLink(f, f.path === "README.md" ? "book" : "ruler")); }
+    const all = docsOf();
+    const q = all.reduce((a, f) => a + (f.questions || 0), 0);
+    $("#stats").textContent = `${all.length} 文档 · ${all.filter((f) => f.type === "paper-note").length} 论文 · ${all.filter(isDone).length} 复核 · ${q} 待解决`;
     highlightActive();
     if (!hashPath()) showHome();
   }
@@ -202,11 +258,11 @@
     const readme = d.files.find(isReadme);
     const label = depth ? subLabel(d) : meta.label;
     const title = document.createElement("button"); title.type = "button"; title.className = "group-title";
-    title.innerHTML = `${depth ? "" : `<span class="sec-icon">${meta.icon}</span>`}<span class="label">${escapeHtml(label)}</span><span class="count">${countFiles(d)}</span><span class="chev" aria-hidden="true"></span>`;
+    title.innerHTML = `${depth ? "" : `<span class="sec-icon">${icon(meta.icon)}</span>`}<span class="label">${escapeHtml(label)}</span><span class="count">${countFiles(d)}</span><span class="chev" aria-hidden="true"></span>`;
     title.addEventListener("click", () => setGroupOpen(g, !g.classList.contains("open"), true));
     const body = document.createElement("div"); body.className = "group-body";
     const inner = document.createElement("div"); inner.className = "group-inner";
-    if (readme) inner.appendChild(fileLink(readme, "◎", "概览"));
+    if (readme) inner.appendChild(fileLink(readme, "compass", "概览"));
     for (const sub of sortDirs(d.dirs)) inner.appendChild(groupNode(sub, meta, depth + 1));
     for (const f of sortFiles(d.files)) if (f !== readme) inner.appendChild(fileLink(f));
     body.appendChild(inner); g.append(title, body);
@@ -220,19 +276,22 @@
     if (open) navOpen.add(g.dataset.key); else navOpen.delete(g.dataset.key);
     store.set("navOpen", JSON.stringify([...navOpen]));
   }
-  function fileLink(f, icon, labelOverride) {
+  function fileLink(f, iconName, labelOverride) {
     flatFiles.push(f);
     const a = document.createElement("a"); a.className = "file"; a.href = "#/" + f.path; a.dataset.path = f.path;
     a.dataset.search = `${f.title} ${(f.tags || []).join(" ")}`.toLowerCase();
-    const lead = icon ?? (f.type === "paper-note" ? "📄" : f.type === "hardware" ? "🛠" : f.chapter > 0 ? String(f.chapter).padStart(2, "0") : "·");
+    const lead = iconName ? icon(iconName) : f.type === "paper-note" ? icon("papers") : f.type === "hardware" ? icon("tool") : f.chapter > 0 ? escapeHtml(String(f.chapter).padStart(2, "0")) : "·";
     const title = labelOverride || f.title.replace(/[（(]目录[)）]/g, "");
-    a.title = [f.title, LEVEL_LABEL[f.level], STATUS_LABEL[f.status], f.estimated_time].filter(Boolean).join(" · ");
-    a.innerHTML = `<span class="num">${escapeHtml(lead)}</span><span class="t">${escapeHtml(title)}</span>` + (isDone(f) ? `<b class="ok" aria-label="已复核">✓</b>` : "") + (f.level && f.level !== "all" ? `<i class="dot ${f.level}"></i>` : "");
+    a.title = [f.title, LEVEL_LABEL[f.level], STATUS_LABEL[f.status], f.estimated_time, f.questions ? `${f.questions} 个待解决` : ""].filter(Boolean).join(" · ");
+    a.innerHTML = `<span class="num">${lead}</span><span class="t">${escapeHtml(title)}</span>` + (isDone(f) ? `<b class="ok" aria-label="已复核">✓</b>` : "") + (f.level && f.level !== "all" ? `<i class="dot ${f.level}"></i>` : "");
     return a;
   }
   function highlightActive() {
     treeEl.querySelectorAll(".file").forEach((el) => el.classList.toggle("active", el.dataset.path === currentPath));
-    $("#navBrowse").classList.toggle("active", hashPath().startsWith("browse"));
+    const h = hashPath();
+    const view = h === "" ? "home" : h.startsWith("papers") ? "papers" : h.startsWith("graph") ? "graph" : h.startsWith("browse") ? "browse" : "";
+    document.querySelectorAll(".topnav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === view));
+    $("#navBrowse").classList.toggle("active", view === "browse");
     const active = treeEl.querySelector(".file.active");
     if (!active) return;
     for (let p = active.parentElement; p && p !== treeEl; p = p.parentElement) if (p.classList.contains("group")) setGroupOpen(p, true, false);
@@ -254,69 +313,127 @@
   navFilter.addEventListener("input", applyNavFilter);
   navFilter.addEventListener("keydown", (e) => { if (e.key === "Escape") { navFilter.value = ""; applyNavFilter(); navFilter.blur(); } });
 
-  // ---------- 首页 ----------
-  const lastDoc = () => { try { return JSON.parse(store.get("lastDoc") || "null"); } catch { return null; } };
+  // ---------- 共用片段：论文徽标、时间线 ----------
   function statusBar(files) {
     const n = Math.max(1, files.length);
     const st = files.filter((f) => f.status === "stable").length, rv = files.filter((f) => f.status === "reviewed").length;
-    return `<div class="sbar" title="稳定 ${st} · 已复核 ${rv} · 草稿 ${files.length - st - rv}"><span class="seg stable" style="width:${(st / n) * 100}%"></span><span class="seg reviewed" style="width:${(rv / n) * 100}%"></span></div><span class="sbar-label">已复核 ${st + rv}/${files.length}</span>`;
+    return `<div class="sbar" title="稳定 ${st} · 已复核 ${rv} · 草稿 ${files.length - st - rv}"><span class="seg stable" style="width:${(st / n) * 100}%"></span><span class="seg reviewed" style="width:${(rv / n) * 100}%"></span></div><span class="sbar-label">${st + rv}/${files.length} 已复核</span>`;
   }
-  function topicCard(s, step) {
+  /** 论文的元信息徽标：会议、难度、状态、待解决数 */
+  function paperBadges(f, { venue = true } = {}) {
+    return [
+      venue && f.venue ? `<span class="badge venue">${escapeHtml(f.venue)}</span>` : "",
+      f.level ? `<span class="pill ${escapeHtml(f.level)}">${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : "",
+      f.status ? `<span class="st st-${escapeHtml(f.status)} small">${escapeHtml(STATUS_LABEL[f.status] ?? f.status)}</span>` : "",
+      f.questions ? `<span class="badge q">${icon("question")}${f.questions} 待解决</span>` : "",
+    ].join("");
+  }
+  function tlItem(f) {
+    const sec = sectionOf(f.path); const deep = sec && !sec.library;
+    const rel = relatedDocs(f).slice(0, 4);
+    return `<a class="tl-item" href="#/${f.path}" style="--sec:${deep ? sec.color : libSection()?.color ?? "#475569"}"><b>${escapeHtml(f.title)}</b><div class="tl-meta">${paperBadges(f)}${deep ? `<span class="sec-chip" style="--sec:${sec.color}">${icon(sec.icon)}精读专题</span>` : ""}</div>${f.summary ? `<p class="tl-sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="tl-rel">${rel.map((d) => `<span class="chip">${escapeHtml(shortTitle(d.title))}</span>`).join("")}</div>` : ""}</a>`;
+  }
+  /** 按年份分组的论文时间线（总览与论文库共用） */
+  function paperTimeline(papers) {
+    const groups = new Map();
+    for (const p of papers) { const y = p.year ?? "—"; if (!groups.has(y)) groups.set(y, []); groups.get(y).push(p); }
+    const years = [...groups.keys()].sort((a, b) => Number(b) - Number(a));
+    return `<div class="timeline">${years.map((y) => `<div class="tl-year"><div class="y">${escapeHtml(String(y))}<small>${groups.get(y).length} 篇</small></div>${groups.get(y).map(tlItem).join("")}</div>`).join("")}</div>`;
+  }
+
+  // ---------- 总览（首页） ----------
+  const lastDoc = () => { try { return JSON.parse(store.get("lastDoc") || "null"); } catch { return null; } };
+  function trackCard(s, step, papers) {
     const files = allFiles(s.dir).filter((f) => !isReadme(f));
     const mins = files.reduce((a, f) => a + minutesOf(f.estimated_time), 0);
     const levels = ["beginner", "intermediate", "advanced"].map((l) => [l, files.filter((f) => f.level === l).length]).filter(([, n]) => n);
     const first = firstChapter(s.dir);
+    const linked = papers.filter((p) => (p.related || []).some((r) => r.startsWith(`Knowledge/${s.key}/`))).length;
     const subs = sortDirs(s.dir.dirs).map((d) => { const r = d.files.find(isReadme); return `<a class="sub-chip" href="#/${r ? r.path : firstChapter(d)?.path ?? ""}">${escapeHtml(subLabel(d))}<b>${countFiles(d)}</b></a>`; }).join("");
-    return `<article class="topic-card" style="--sec:${s.color}">
-      <div class="tc-head"><span class="sec-icon lg">${s.icon}</span><span class="tc-step">第 ${step} 站</span></div>
-      <h3><a href="#/${s.readme?.path ?? first?.path ?? ""}">${escapeHtml(s.label)}</a></h3>
-      <p class="tc-sum">${escapeHtml(s.readme?.summary ?? "")}</p>
-      <div class="tc-meta"><span>📑 ${files.length} 篇</span>${mins ? `<span>⏱ 约 ${fmtTime(mins)}</span>` : ""}</div>
-      <div class="tc-levels">${levels.map(([l, n]) => `<span><i class="dot ${l}"></i>${LEVEL_LABEL[l]} ${n}</span>`).join("")}</div>
-      ${subs ? `<div class="tc-subs">${subs}</div>` : ""}
-      <div class="tc-progress">${statusBar(files)}</div>
-      <div class="tc-actions">${first ? `<a class="btn small primary" href="#/${first.path}">开始学习 →</a>` : ""}<a class="btn small" href="#/browse?section=${encodeURIComponent(s.key)}">全部章节</a></div>
+    return `<article class="track" style="--sec:${s.color}">
+      <div class="track-head"><span class="sec-icon lg">${icon(s.icon)}</span><div><div class="eyebrow">Track ${String(step).padStart(2, "0")}${s.en ? ` · ${escapeHtml(s.en)}` : ""}</div><h3><a href="#/${s.readme?.path ?? first?.path ?? ""}">${escapeHtml(s.label)}</a></h3></div></div>
+      <p class="track-sum">${escapeHtml(s.readme?.summary ?? "")}</p>
+      <div class="track-meta"><span>${icon("list")}${files.length} 篇</span>${mins ? `<span>${icon("clock")}约 ${fmtTime(mins)}</span>` : ""}${linked ? `<span>${icon("papers")}${linked} 篇论文关联</span>` : ""}</div>
+      <div class="track-meta">${levels.map(([l, n]) => `<span><i class="dot ${l}"></i>${LEVEL_LABEL[l]} ${n}</span>`).join("")}</div>
+      ${subs ? `<div class="track-subs">${subs}</div>` : ""}
+      <div class="track-progress">${statusBar(files)}</div>
+      <div class="track-actions">${first ? `<a class="btn small primary" href="#/${first.path}">开始 →</a>` : ""}<a class="btn small" href="#/browse?section=${encodeURIComponent(s.key)}">全部章节</a></div>
     </article>`;
   }
-  /** 首页每次打开都重新生成（"继续阅读"要反映最近读过的文档） */
+  const metric = (n, label, en, cls = "") => `<div class="metric${cls ? " " + cls : ""}"><b>${n}</b><span>${label}</span><small>${en}</small></div>`;
+  /** 总览每次打开都重新生成（"继续阅读"要反映最近读过的文档） */
   function homeHtml() {
-    const docs = allFiles(knowledge).filter((f) => !isReadme(f));
-    const papers = docs.filter((f) => f.type === "paper-note").sort((a, b) => Number(b.year ?? 0) - Number(a.year ?? 0));
+    const docs = docsOf();
+    const papers = docs.filter((f) => f.type === "paper-note").sort((a, b) => Number(b.year ?? 0) - Number(a.year ?? 0) || b.path.localeCompare(a.path));
     const learn = sections.filter((s) => !s.library);
-    const lib = sections.find((s) => s.library);
+    const lib = libSection();
+    const questions = docs.reduce((a, f) => a + (f.questions || 0), 0);
+    const recent = docs.filter((f) => f.updated).sort((a, b) => String(b.updated).localeCompare(String(a.updated)) || a.path.localeCompare(b.path)).slice(0, 7);
+    const openQ = docs.filter((f) => f.questions > 0).sort((a, b) => b.questions - a.questions || a.path.localeCompare(b.path)).slice(0, 6);
     const tagCount = new Map();
     for (const f of docs) for (const t of f.tags || []) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
-    const tags = [...tagCount].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 28);
+    const tags = [...tagCount].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 22);
     const resume = lastDoc();
     const resumeOk = resume && flatFiles.some((f) => f.path === resume.path);
-    const stat = (n, l) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`;
     const kIndex = knowledge?.files.find(isReadme);
-    const paperItem = (f) => { const s = sectionOf(f.path); return `<a class="paper-item" href="#/${f.path}"><span class="pi-year">${escapeHtml(String(f.year ?? "—"))}</span><span class="pi-body"><b>${escapeHtml(f.title)}</b><span>${escapeHtml(f.summary ?? "")}</span></span>${s && !s.library ? `<span class="sec-chip" style="--sec:${s.color}">${s.icon} ${escapeHtml(s.label)}精读</span>` : ""}</a>`; };
+    const keys = [["⌘K", "搜索"], ["[", "目录"], ["]", "研究助手"], ["p", "论文库"], ["g", "关联图"], ["← →", "上一章 / 下一章"], ...(STATIC ? [] : [["e", "编辑当前文档"], ["n", "新建笔记"], ["⌘S", "保存"]])];
     return `
       <section class="hero">
-        <h1>从零开始的学习知识库</h1>
-        <p>按章节循序渐进，每章有练习与自测；遇到不懂的随时问助教，读到的论文会自动挂到相关章节上。</p>
-        <div class="stats">${stat(learn.length, "学习主题")}${stat(docs.length, "篇文档")}${stat(papers.length, "篇论文")}${stat(docs.filter(isDone).length, "篇已复核")}</div>
-        ${resumeOk ? `<a class="resume" href="#/${resume.path}"><span>继续阅读</span><b>${escapeHtml(resume.title)}</b><span aria-hidden="true">→</span></a>` : ""}
+        <div class="eyebrow">Physical AI · Research Workspace</div>
+        <h1>物理智能研究工作台</h1>
+        <p class="lede">围绕 VLA、力 / 触觉融合、世界模型与机械臂部署组织的研究知识库：教程章节与论文笔记双向关联，检索、问答、写笔记、导入论文在同一处完成。</p>
+        <div class="metrics">${metric(docs.length, "文档", "Documents")}${metric(papers.length, "论文笔记", "Paper notes")}${metric(docs.filter(isDone).length, "已复核", "Reviewed")}${metric(questions, "待解决问题", "Open questions", "q")}</div>
+        ${resumeOk ? `<a class="resume" href="#/${resume.path}"><span>继续阅读</span><b>${escapeHtml(resume.title)}</b>${icon("arrow")}</a>` : ""}
       </section>
-      <section class="home-sec">
-        <div class="home-sec-head"><h2>学习路线</h2>${kIndex ? `<a href="#/${kIndex.path}">查看完整路线图 →</a>` : ""}</div>
-        <div class="route">${learn.map((s, i) => topicCard(s, i + 1)).join("")}</div>
-      </section>
-      ${lib ? `<section class="home-sec">
-        <div class="home-sec-head"><h2>${lib.icon} 论文库</h2><a href="#/browse?type=paper-note">全部论文 →</a></div>
-        <div class="domains">${sortDirs(lib.dir.dirs).map((d) => { const r = d.files.find(isReadme); return `<a class="domain" href="#/${r?.path ?? ""}" style="--sec:${lib.color}"><span class="sec-icon">${SUBS[subKey(d)]?.icon ?? lib.icon}</span><span>${escapeHtml(subLabel(d))}</span><b>${countFiles(d)}</b></a>`; }).join("")}</div>
-        <div class="paper-list">${papers.slice(0, 6).map(paperItem).join("") || `<p class="muted">还没有论文。</p>`}</div>
-      </section>` : ""}
-      ${tags.length ? `<section class="home-sec">
-        <div class="home-sec-head"><h2>按标签探索</h2><a href="#/browse">分类浏览 →</a></div>
-        <div class="tag-cloud">${tags.map(([t, n]) => `<a class="tchip" href="#/browse?tag=${encodeURIComponent(t)}">#${escapeHtml(t)}<b>${n}</b></a>`).join("")}</div>
-      </section>` : ""}
-      <p class="muted small home-keys">快捷键：<kbd>⌘K</kbd> 搜索 · <kbd>[</kbd> 目录 · <kbd>]</kbd> 助教 · <kbd>←</kbd><kbd>→</kbd> 上一章/下一章${STATIC ? "" : " · <kbd>e</kbd> 编辑当前文档 · <kbd>n</kbd> 新建笔记 · <kbd>⌘S</kbd> 保存"}</p>`;
+      <div class="home-grid">
+        <div>
+          <section class="home-sec">
+            <div class="home-sec-head"><div><div class="eyebrow">Research Tracks</div><h2>研究方向</h2></div><div class="links">${kIndex ? `<a href="#/${kIndex.path}">完整路线图 →</a>` : ""}<a href="#/browse">分类浏览 →</a></div></div>
+            <div class="tracks">${learn.map((s, i) => trackCard(s, i + 1, papers)).join("")}</div>
+          </section>
+          <section class="home-sec">
+            <div class="home-sec-head"><div><div class="eyebrow">Paper Timeline</div><h2>论文时间线</h2></div><div class="links"><a href="#/papers">论文库 →</a><a href="#/graph">关联图 →</a></div></div>
+            ${papers.length ? paperTimeline(papers.slice(0, 8)) : `<p class="muted">还没有论文。</p>`}
+            ${papers.length > 8 ? `<p class="muted small">只显示最近 8 篇，<a href="#/papers?view=timeline">查看全部 ${papers.length} 篇 →</a></p>` : ""}
+          </section>
+        </div>
+        <aside>
+          <section class="side-card"><div class="eyebrow">最近更新<a href="#/browse">全部 →</a></div><div class="side-list">${recent.map((f) => `<a href="#/${f.path}"><span class="t">${escapeHtml(f.title)}</span><span class="d">${escapeHtml(String(f.updated))}</span></a>`).join("") || `<p class="muted small">暂无</p>`}</div></section>
+          <section class="side-card"><div class="eyebrow">待解决问题<span>${questions}</span></div>${openQ.length ? `<div class="side-list">${openQ.map((f) => `<a href="#/${f.path}"><span class="t">${escapeHtml(f.title)}</span><span class="n">${f.questions}</span></a>`).join("")}</div>` : `<p class="muted small">没有待解决的问题。</p>`}</section>
+          ${lib ? `<section class="side-card"><div class="eyebrow">论文领域<a href="#/papers">论文库 →</a></div><div class="side-list">${sortDirs(lib.dir.dirs).map((d) => `<a href="#/papers?domain=${encodeURIComponent(d.name)}"><span class="t">${escapeHtml(subLabel(d))}</span><span class="d">${countFiles(d)}</span></a>`).join("")}</div></section>` : ""}
+          ${tags.length ? `<section class="side-card"><div class="eyebrow">关键词</div><div class="tag-cloud">${tags.map(([t, n]) => `<a class="tchip" href="#/browse?tag=${encodeURIComponent(t)}">#${escapeHtml(t)}<b>${n}</b></a>`).join("")}</div></section>` : ""}
+          <section class="side-card"><div class="eyebrow">快捷键</div><div class="keys">${keys.map(([k, l]) => `<kbd>${escapeHtml(k)}</kbd><span>${escapeHtml(l)}</span>`).join("")}</div></section>
+        </aside>
+      </div>`;
   }
-  function showHome() { currentPath = ""; contentEl.innerHTML = tree ? homeHtml() : ""; tocEl.innerHTML = ""; document.title = "Learning 知识库"; highlightActive(); mainEl.scrollTo(0, 0); }
+  function showHome() { currentPath = ""; contentEl.innerHTML = tree ? homeHtml() : ""; tocEl.innerHTML = ""; document.title = APP; highlightActive(); mainEl.scrollTo(0, 0); }
 
   // ---------- 文档页 ----------
+  const sourceLabel = (u) => {
+    if (/arxiv\.org/.test(u)) return "arXiv";
+    if (/openaccess\.thecvf|thecvf\.com/.test(u)) return "CVF Open Access";
+    if (/openreview\.net/.test(u)) return "OpenReview";
+    if (/github\.com/.test(u)) return "代码";
+    if (/huggingface\.co/.test(u)) return "Hugging Face";
+    if (/sites\.google\.com|github\.io|\/project/.test(u)) return "项目页";
+    if (/blog/.test(u)) return "博客";
+    try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "链接"; }
+  };
+  /** paper-note 顶部的信息卡：年份 / 会议 / 来源链接 / 关联章节；知识章节则列出相关论文 */
+  function paperCard(doc) {
+    const m = doc.meta;
+    if (m.type === "paper-note") {
+      const srcs = (Array.isArray(m.sources) ? m.sources : m.sources ? [m.sources] : []).map(String).filter((s) => /^https?:/.test(s));
+      const rel = doc.related || [];
+      return `<section class="paper-card">
+        <div class="pc-line">${m.year ? `<span class="badge year">${escapeHtml(String(m.year))}</span>` : ""}${m.venue ? `<span class="badge venue">${escapeHtml(m.venue)}</span>` : `<span class="badge muted">预印本 / 未注明会议</span>`}${m.topic ? `<span class="badge">${escapeHtml(String(m.topic))}</span>` : ""}${srcs.map((u) => `<a class="src" href="${escapeHtml(u)}" target="_blank" rel="noopener">${icon("external")}${escapeHtml(sourceLabel(u))}</a>`).join("")}</div>
+        ${rel.length ? `<div class="pc-related"><span class="eyebrow">关联章节</span>${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title, 22))}</a>`).join("")}</div>` : ""}
+      </section>`;
+    }
+    const papers = doc.relatedPapers || [];
+    if (!papers.length || m.type === "index") return "";
+    return `<section class="paper-card"><div class="pc-related" style="border:0;padding:0"><span class="eyebrow">相关论文</span>${papers.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${icon("papers")}${escapeHtml(shortTitle(d.title, 22))}${d.year ? ` <span class="muted">${escapeHtml(String(d.year))}</span>` : ""}</a>`).join("")}</div></section>`;
+  }
   async function showDoc(path, hash) {
     const doc = await data.doc(path);
     if (!doc) { contentEl.innerHTML = `<div class="doc-head"><h1>找不到文档</h1></div><p>${escapeHtml(path)}</p>`; tocEl.innerHTML = ""; return; }
@@ -332,9 +449,9 @@
       const p = arr.slice(0, i + 1).join("/");
       if (p === "Knowledge") return "";
       const idx = flatFiles.find((f) => f.path === `${p}/00-README.md`);
-      const label = i === 1 && sec ? `${sec.icon} ${sec.label}` : SUBS[p.replace(/^Knowledge\//, "")]?.label ?? seg;
+      const label = i === 1 && sec ? `${icon(sec.icon)}${escapeHtml(sec.label)}` : escapeHtml(SUBS[p.replace(/^Knowledge\//, "")]?.label ?? seg);
       const cls = i === 1 && sec ? ` class="sec-chip" style="--sec:${sec.color}"` : "";
-      return idx ? `<a${cls} href="#/${idx.path}">${escapeHtml(label)}</a>` : `<span${cls}>${escapeHtml(label)}</span>`;
+      return idx ? `<a${cls} href="#/${idx.path}">${label}</a>` : `<span${cls}>${label}</span>`;
     }).filter(Boolean).join("<span>›</span>");
     // 元信息都能点：跳到分类浏览里对应的筛选
     const facet = (k, v) => `#/browse?${k}=${encodeURIComponent(v)}`;
@@ -342,16 +459,16 @@
       m.level && `<a class="pill ${escapeHtml(m.level)}" href="${facet("level", m.level)}">${escapeHtml(LEVEL_LABEL[m.level] ?? m.level)}</a>`,
       m.type && `<a class="pill tag" href="${facet("type", m.type)}">${escapeHtml(TYPE_LABEL[m.type] ?? m.type)}</a>`,
       m.status && `<a class="pill status-${escapeHtml(m.status)}" href="${facet("status", m.status)}">${escapeHtml(STATUS_LABEL[m.status] ?? m.status)}</a>`,
-      m.estimated_time && `<span class="pill tag">⏱ ${escapeHtml(m.estimated_time)}</span>`,
+      m.estimated_time && `<span class="pill tag">${icon("clock")} ${escapeHtml(m.estimated_time)}</span>`,
       m.updated && `<span class="pill tag">更新 ${escapeHtml(m.updated)}</span>`,
       ...(Array.isArray(m.tags) ? m.tags : []).map((t) => `<a class="pill tag hash" href="${facet("tag", t)}">#${escapeHtml(t)}</a>`),
     ].filter(Boolean).join("");
-    const editBtn = !STATIC && canEdit(doc.path) ? `<a class="btn small ghost edit-btn" href="#/edit/${doc.path}" title="在网页里修改这篇文档（保存后自动重建）">✎ 编辑</a>` : "";
-    contentEl.innerHTML = `<div class="crumbs">${crumbs}</div><div class="doc-head"><h1>${renderInline(title)}</h1><div class="pills">${pills}${editBtn}</div></div>${renderMarkdown(body, doc.path)}${relatedBox(doc)}${pager(doc.path)}`;
+    const editBtn = !STATIC && canEdit(doc.path) ? `<a class="btn small ghost edit-btn" href="#/edit/${doc.path}" title="在网页里修改这篇文档（保存后自动重建）">${icon("edit")}编辑</a>` : "";
+    contentEl.innerHTML = `<div class="crumbs">${crumbs}</div><div class="doc-head"><h1>${renderInline(title)}</h1><div class="pills">${pills}${editBtn}</div></div>${paperCard(doc)}${renderMarkdown(body, doc.path)}${relatedBox(doc)}${pager(doc.path)}`;
     postProcess(contentEl);
-    buildToc();
+    buildRail(doc);
     highlightActive();
-    document.title = `${title.replace(/[*_`]/g, "")} · Learning 知识库`;
+    document.title = `${title.replace(/[*_`]/g, "")} · ${APP}`;
     if (m.type !== "index" && doc.path.startsWith("Knowledge/")) store.set("lastDoc", JSON.stringify({ path: doc.path, title: doc.title }));
     if (hash) { const t = contentEl.querySelector(`#${CSS.escape(decodeURIComponent(hash))}`) || [...contentEl.querySelectorAll("h2,h3")].find((h) => h.textContent.trim() === decodeURIComponent(hash)); t?.scrollIntoView(); }
     else mainEl.scrollTo(0, 0);
@@ -359,9 +476,9 @@
   }
   // 论文 ↔ 知识章节的双向关联（来自论文 frontmatter 的 related，见 STANDARD.md 第 11 节）
   function relatedBox(doc) {
-    const item = (d) => `<li><a href="#/${d.path}">${escapeHtml(d.title)}</a>${d.year ? ` <span class="muted small">${escapeHtml(String(d.year))}</span>` : ""}${d.status ? ` <span class="pill status-${escapeHtml(d.status)}">${escapeHtml(d.status)}</span>` : ""}</li>`;
-    const box = (title, list) => (list?.length ? `<section class="related-box"><div class="related-title">${title}</div><ul>${list.map(item).join("")}</ul></section>` : "");
-    return box("🔗 关联的知识章节", doc.related) + box("📄 相关论文", doc.relatedPapers);
+    const item = (d) => `<li><a href="#/${d.path}">${escapeHtml(d.title)}</a>${d.year ? ` <span class="muted small">${escapeHtml(String(d.year))}</span>` : ""}${d.status ? ` <span class="pill status-${escapeHtml(d.status)}">${escapeHtml(STATUS_LABEL[d.status] ?? d.status)}</span>` : ""}</li>`;
+    const box = (ic, title, list) => (list?.length ? `<section class="related-box"><div class="related-title">${icon(ic)}${title}</div><ul>${list.map(item).join("")}</ul></section>` : "");
+    return box("link", "关联的知识章节", doc.related) + box("papers", "相关论文", doc.relatedPapers);
   }
   const renderInline = (s) => (hasMarked ? marked.parseInline(s) : escapeHtml(s));
   function siblings(path) {
@@ -374,31 +491,212 @@
     return `<nav class="pager">${prev ? `<a class="prev" href="#/${prev.path}"><span class="lbl">← 上一章</span><span class="ttl">${escapeHtml(prev.title)}</span></a>` : "<span></span>"}${next ? `<a class="next" href="#/${next.path}"><span class="lbl">下一章 →</span><span class="ttl">${escapeHtml(next.title)}</span></a>` : ""}</nav>`;
   }
   let tocObserver = null;
-  function buildToc() {
+  /** 右栏：本页目录 + 研究状态（状态、更新、关联数、待解决列表） */
+  function buildRail(doc) {
     const hs = [...contentEl.querySelectorAll("h2, h3")];
     tocObserver?.disconnect();
-    if (hs.length < 2) { tocEl.innerHTML = ""; return; }
-    tocEl.innerHTML = `<div class="toc-title">本页目录</div>` + hs.map((h) => `<a class="${h.tagName.toLowerCase()}" href="#/${currentPath}#${h.id}" data-id="${h.id}">${escapeHtml(h.textContent)}</a>`).join("");
-    tocEl.querySelectorAll("a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); contentEl.querySelector(`#${CSS.escape(a.dataset.id)}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
+    const qs = [...contentEl.querySelectorAll(".callout.question")];
+    const m = doc?.meta ?? {};
+    let html = "";
+    if (hs.length >= 2) html += `<div class="rail-sec"><div class="rail-title">本页目录</div>${hs.map((h) => `<a class="${h.tagName.toLowerCase()}" href="#/${currentPath}#${h.id}" data-id="${h.id}">${escapeHtml(h.textContent)}</a>`).join("")}</div>`;
+    if (doc && doc.path.startsWith("Knowledge/") && m.type !== "index") {
+      const paper = m.type === "paper-note";
+      const links = paper ? doc.related || [] : doc.relatedPapers || [];
+      html += `<div class="rail-sec rail-status"><div class="rail-title">研究状态</div>
+        <dl><dt>状态</dt><dd><span class="st st-${escapeHtml(m.status ?? "")}">${escapeHtml(STATUS_LABEL[m.status] ?? m.status ?? "—")}</span></dd>
+        <dt>更新</dt><dd>${escapeHtml(m.updated ?? "—")}</dd>
+        ${paper ? `<dt>年份</dt><dd>${escapeHtml(String(m.year ?? "—"))}${m.venue ? ` · ${escapeHtml(m.venue)}` : ""}</dd>` : ""}
+        <dt>${paper ? "关联章节" : "相关论文"}</dt><dd>${links.length} 篇</dd>
+        <dt>待解决</dt><dd>${qs.length} 处</dd></dl>
+        ${qs.length ? `<div class="rail-qs">${qs.map((q, i) => `<a href="#" data-q="${q.id}">${i + 1}. ${escapeHtml((q.querySelector("p")?.textContent ?? "").trim().slice(0, 42))}…</a>`).join("")}</div>` : ""}
+        ${links.length ? `<div class="rail-links">${links.map((d) => `<a href="#/${d.path}" title="${escapeHtml(d.title)}">${icon(paper ? "link" : "papers")} ${escapeHtml(shortTitle(d.title, 20))}</a>`).join("")}</div>` : ""}
+      </div>`;
+    }
+    tocEl.innerHTML = html;
+    tocEl.querySelectorAll("a[data-id]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); contentEl.querySelector(`#${CSS.escape(a.dataset.id)}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
+    tocEl.querySelectorAll("a[data-q]").forEach((a) => a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const t = contentEl.querySelector(`#${CSS.escape(a.dataset.q)}`); if (!t) return;
+      t.scrollIntoView({ behavior: "smooth", block: "center" }); t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1600);
+    }));
+    if (hs.length < 2) return;
     tocObserver = new IntersectionObserver((entries) => {
-      for (const en of entries) if (en.isIntersecting) { tocEl.querySelectorAll("a").forEach((a) => a.classList.toggle("active", a.dataset.id === en.target.id)); break; }
+      for (const en of entries) if (en.isIntersecting) { tocEl.querySelectorAll("a[data-id]").forEach((a) => a.classList.toggle("active", a.dataset.id === en.target.id)); break; }
     }, { root: mainEl, rootMargin: "-10% 0px -80% 0px" });
     hs.forEach((h) => tocObserver.observe(h));
   }
   mainEl.addEventListener("scroll", () => { const p = mainEl.scrollTop / Math.max(1, mainEl.scrollHeight - mainEl.clientHeight); $("#progress").style.width = `${Math.min(100, p * 100)}%`; });
 
+  // ---------- 论文库：#/papers?domain=&status=&level=&view=list|timeline&q= ----------
+  function paperRow(f) {
+    const sec = sectionOf(f.path); const deep = sec && !sec.library;
+    const rel = relatedDocs(f);
+    const tags = (f.tags || []).slice(0, 5);
+    return `<a class="prow" href="#/${f.path}">
+      <div class="prow-year">${escapeHtml(String(f.year ?? "—"))}<small>${deep ? "精读" : escapeHtml(domainOf(f))}</small></div>
+      <div class="prow-main"><b>${escapeHtml(f.title)}</b>${f.summary ? `<p class="sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="rel">${rel.map((d) => `<span class="chip" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</span>`).join("")}</div>` : ""}${tags.length ? `<div class="prow-tags">${tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join("")}</div>` : ""}</div>
+      <div class="prow-side"><div class="row">${f.venue ? `<span class="badge venue">${escapeHtml(f.venue)}</span>` : ""}${f.level ? `<span class="pill ${escapeHtml(f.level)}">${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : ""}</div><div class="row"><span class="st st-${escapeHtml(f.status ?? "")} small">${escapeHtml(STATUS_LABEL[f.status] ?? "")}</span>${f.questions ? `<span class="badge q">${f.questions} 待解决</span>` : ""}${f.estimated_time ? `<span class="muted small">${escapeHtml(f.estimated_time)}</span>` : ""}</div></div>
+    </a>`;
+  }
+  function showPapers(qs) {
+    const params = new URLSearchParams(qs);
+    const sel = { domain: params.get("domain") || "", status: params.get("status") || "", level: params.get("level") || "", view: params.get("view") === "timeline" ? "timeline" : "list", q: (params.get("q") || "").trim().toLowerCase() };
+    currentPath = ""; tocEl.innerHTML = "";
+    const lib = libSection();
+    const all = uniqFiles().filter((f) => f.type === "paper-note");
+    const link = (k, v) => { const p = new URLSearchParams(params); if (v == null || (k !== "view" && p.get(k) === v)) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/papers${s ? "?" + s : ""}`; };
+    const match = (f, s, skip) => (skip === "domain" || !s.domain || domainOf(f) === s.domain) && (skip === "status" || !s.status || f.status === s.status) && (skip === "level" || !s.level || f.level === s.level) && (!s.q || `${f.title} ${f.summary ?? ""} ${(f.tags || []).join(" ")} ${f.venue ?? ""}`.toLowerCase().includes(s.q));
+    const count = (k, v, get) => all.filter((f) => match(f, sel, k) && get(f) === v).length;
+    const chip = (k, v, label, extra = "") => `<a class="fchip${sel[k] === v ? " on" : ""}" href="${link(k, v)}">${extra}${escapeHtml(label)}<b>${count(k, v, k === "domain" ? domainOf : (f) => f[k])}</b></a>`;
+    const allChip = (k) => `<a class="fchip${sel[k] ? "" : " on"}" href="${link(k, null)}">全部</a>`;
+    const domainChips = allChip("domain") + (lib ? sortDirs(lib.dir.dirs).map((d) => chip("domain", d.name, subLabel(d), `<span class="sec-icon sm" style="--sec:${lib.color}">${icon(subIcon(d, lib.icon))}</span>`)).join("") : "") + (all.some((f) => domainOf(f) === "_deep") ? chip("domain", "_deep", "精读专题") : "");
+    const statusChips = allChip("status") + ORDER.status.filter((v) => all.some((f) => f.status === v)).map((v) => chip("status", v, STATUS_LABEL[v])).join("");
+    const levelChips = allChip("level") + ORDER.level.filter((v) => all.some((f) => f.level === v)).map((v) => chip("level", v, LEVEL_LABEL[v])).join("");
+    const active = sel.domain || sel.status || sel.level || sel.q;
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Paper Library</div><h1>论文库</h1><p>每篇论文笔记通过 related 挂到知识章节上：读论文时能跳回基础知识，读章节时能看到相关论文。按领域、状态、难度筛选，或切换到时间线。</p></div>
+      <div class="toolbar">
+        <div class="toolbar-row"><span class="lbl">领域</span>${domainChips}<span class="seg-toggle"><a class="${sel.view === "list" ? "on" : ""}" href="${link("view", "list")}">${icon("list")}列表</a><a class="${sel.view === "timeline" ? "on" : ""}" href="${link("view", "timeline")}">${icon("calendar")}时间线</a></span></div>
+        <div class="toolbar-row"><span class="lbl">状态</span>${statusChips}</div>
+        <div class="toolbar-row"><span class="lbl">难度</span>${levelChips}</div>
+        <div class="toolbar-row"><span class="lbl">关键词</span><input id="paperQ" class="q-input" type="search" placeholder="标题、简介、标签、会议…" value="${escapeHtml(params.get("q") || "")}" />${active ? `<a class="clear-all" href="#/papers">清除条件</a>` : ""}</div>
+      </div>
+      <div id="paperResults"></div>`;
+    const render = (s) => {
+      const hits = all.filter((f) => match(f, s)).sort((a, b) => Number(b.year ?? 0) - Number(a.year ?? 0) || a.path.localeCompare(b.path));
+      $("#paperResults").innerHTML = `<div class="count-line">${hits.length} / ${all.length} papers</div>` + (hits.length ? (s.view === "timeline" ? paperTimeline(hits) : `<div class="plist">${hits.map(paperRow).join("")}</div>`) : `<div class="browse-empty"><p>没有符合条件的论文。</p><a class="btn small" href="#/papers">清除条件</a></div>`);
+    };
+    render(sel);
+    const qInput = $("#paperQ");
+    let t = null;
+    qInput.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => {
+      const p = new URLSearchParams(params); const v = qInput.value.trim(); if (v) p.set("q", v); else p.delete("q");
+      window.history.replaceState(null, "", `#/papers${p.toString() ? "?" + p : ""}`); // 注意：本文件的 history 变量是聊天记录
+      render({ ...sel, q: v.toLowerCase() });
+    }, 120); });
+    document.title = `论文库 · ${APP}`;
+    highlightActive(); mainEl.scrollTo(0, 0);
+    if (isMobile()) layout.classList.remove("nav-open");
+  }
+
+  // ---------- 关联图：知识章节 ↔ 论文（边来自论文 frontmatter 的 related）----------
+  /** Fruchterman–Reingold 力导向布局，节点几十个时同步算完即可 */
+  function layoutGraph(nodes, edges, W, H) {
+    const n = nodes.length; if (!n) return;
+    const idx = new Map(nodes.map((d, i) => [d.id, i]));
+    // 初始位置：黄金角螺旋（确定性，论文靠内圈、章节靠外圈），避免一开始就重叠
+    nodes.forEach((d, i) => { const a = i * 2.399963; const r = Math.min(W, H) * (d.f.type === "paper-note" ? 0.12 : 0.3) * (0.6 + 0.4 * Math.sqrt((i + 1) / n)); d.x = W / 2 + Math.cos(a) * r; d.y = H / 2 + Math.sin(a) * r; });
+    const E = edges.map(([a, b]) => [idx.get(a), idx.get(b)]).filter(([a, b]) => a != null && b != null);
+    const k = Math.sqrt((W * H) / n) * 0.62, pad = 56, iters = 420;
+    for (let it = 0; it < iters; it++) {
+      const temp = (1 - it / iters) * k * 0.3 + 0.4;
+      for (const d of nodes) { d.fx = (W / 2 - d.x) * 0.09; d.fy = (H / 2 - d.y) * 0.11; }
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy || 0.01, d = Math.sqrt(d2);
+        const f = (k * k) / d; dx = (dx / d) * f; dy = (dy / d) * f;
+        a.fx += dx; a.fy += dy; b.fx -= dx; b.fy -= dy;
+      }
+      for (const [i, j] of E) {
+        const a = nodes[i], b = nodes[j];
+        let dx = a.x - b.x, dy = a.y - b.y; const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const f = (d * d) / k; dx = (dx / d) * f; dy = (dy / d) * f;
+        a.fx -= dx; a.fy -= dy; b.fx += dx; b.fy += dy;
+      }
+      for (const d of nodes) {
+        const len = Math.sqrt(d.fx * d.fx + d.fy * d.fy) || 0.01, m = Math.min(len, temp);
+        d.x = Math.max(pad, Math.min(W - pad, d.x + (d.fx / len) * m));
+        d.y = Math.max(pad, Math.min(H - pad, d.y + (d.fy / len) * m));
+      }
+    }
+  }
+  function showGraph(qs) {
+    const params = new URLSearchParams(qs);
+    const secSel = params.get("section") || "";
+    const showAll = params.get("all") === "1";
+    currentPath = ""; tocEl.innerHTML = "";
+    const docs = uniqFiles().filter((f) => f.path.startsWith("Knowledge/") && !isReadme(f) && f.type !== "index");
+    const have = new Set(docs.map((d) => d.path));
+    const edges = [];
+    for (const f of docs) if (f.type === "paper-note") for (const r of f.related || []) if (have.has(r)) edges.push([f.path, r]);
+    const degree = new Map();
+    for (const [a, b] of edges) { degree.set(a, (degree.get(a) ?? 0) + 1); degree.set(b, (degree.get(b) ?? 0) + 1); }
+    let nodes = docs.filter((f) => showAll || degree.has(f.path));
+    if (secSel) nodes = nodes.filter((f) => sectionOf(f.path)?.key === secSel || (f.type === "paper-note" && (f.related || []).some((r) => r.startsWith(`Knowledge/${secSel}/`))));
+    const inSet = new Set(nodes.map((n) => n.path));
+    const E = edges.filter(([a, b]) => inSet.has(a) && inSet.has(b));
+    const W = 960, H = Math.max(560, Math.min(920, 220 + nodes.length * 16)), pad = 56;
+    const N = nodes.map((f) => ({ id: f.path, f, deg: degree.get(f.path) ?? 0 }));
+    layoutGraph(N, E, W, H);
+    // 标签防重叠：按标签框粗略估算，上下错开（几十轮即可收敛）
+    const labelW = (n) => shortTitle(n.f.title, 14).length * 11 + 16;
+    for (let it = 0; it < 60; it++) {
+      let moved = false;
+      for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+        const a = N[i], b = N[j];
+        const dy = Math.abs(a.y - b.y);
+        if (dy >= 20 || a.x - 12 >= b.x + 12 + labelW(b) || b.x - 12 >= a.x + 12 + labelW(a)) continue;
+        const push = (20 - dy) / 2 + 0.5, s = a.y <= b.y ? 1 : -1;
+        a.y = Math.max(pad, Math.min(H - pad, a.y - push * s)); b.y = Math.max(pad, Math.min(H - pad, b.y + push * s)); moved = true;
+      }
+      if (!moved) break;
+    }
+    const pos = new Map(N.map((n) => [n.id, n]));
+    // 论文按它关联最多的主题上色（论文库自己的灰色没有信息量）；精读专题的论文已在主题目录下
+    const colorOf = (f) => {
+      const own = sectionOf(f.path);
+      if (own && !own.library) return own.color;
+      const votes = new Map();
+      for (const r of f.related || []) { const s = sectionOf(r); if (s && !s.library) votes.set(s.key, (votes.get(s.key) ?? 0) + 1); }
+      const top = [...votes].sort((a, b) => b[1] - a[1])[0];
+      return top ? sections.find((s) => s.key === top[0])?.color ?? "#64748b" : own?.color ?? "#64748b";
+    };
+    const link = (k, v) => { const p = new URLSearchParams(params); if (v == null || p.get(k) === v) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/graph${s ? "?" + s : ""}`; };
+    const secChips = `<a class="fchip${secSel ? "" : " on"}" href="${link("section", null)}">全部</a>` + sections.filter((s) => !s.library).map((s) => `<a class="fchip${secSel === s.key ? " on" : ""}" href="${link("section", s.key)}"><span class="sec-icon sm" style="--sec:${s.color}">${icon(s.icon)}</span>${escapeHtml(s.label)}</a>`).join("");
+    const svgEdges = E.map(([a, b]) => { const p = pos.get(a), q = pos.get(b); return `<line class="edge" data-a="${escapeHtml(a)}" data-b="${escapeHtml(b)}" x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${q.x.toFixed(1)}" y2="${q.y.toFixed(1)}"/>`; }).join("");
+    const svgNodes = N.map((n) => {
+      const r = 5 + Math.min(9, n.deg * 1.3), c = colorOf(n.f), paper = n.f.type === "paper-note";
+      const shape = paper ? `<rect class="shape" x="${-r}" y="${-r}" width="${2 * r}" height="${2 * r}" rx="3" fill="${c}"/>` : `<circle class="shape" r="${r}" fill="${c}" fill-opacity=".85"/>`;
+      // 靠右的节点把标签放到左边，免得被画布裁掉
+      const left = n.x > W - 170;
+      return `<g class="node${n.deg >= 4 ? " hub" : ""}${paper ? " paper" : ""}" data-id="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})">${shape}<text x="${(left ? -(r + 4) : r + 4).toFixed(1)}" y="4"${left ? ' text-anchor="end"' : ""}>${escapeHtml(shortTitle(n.f.title, 14))}</text></g>`;
+    }).join("");
+    const papersN = N.filter((n) => n.f.type === "paper-note").length;
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Knowledge Graph</div><h1>关联图</h1><p>方块是论文笔记，圆点是知识章节，连线来自论文 frontmatter 的 related；节点越大表示被关联得越多。悬停看邻居，点击打开文档。</p></div>
+      <div class="toolbar"><div class="toolbar-row"><span class="lbl">主题</span>${secChips}<span class="seg-toggle"><a class="${showAll ? "" : "on"}" href="${link("all", null)}">只看有关联的</a><a class="${showAll ? "on" : ""}" href="${link("all", "1")}">包含全部章节</a></span></div></div>
+      <div class="count-line">${N.length} nodes · ${E.length} edges · ${papersN} papers</div>
+      <div class="graph-wrap" id="graphWrap">${N.length ? `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="知识章节与论文的关联图">${svgEdges}${svgNodes}</svg><div class="graph-tip" id="graphTip"></div>` : `<div class="browse-empty"><p>还没有论文关联到这个主题。</p></div>`}
+        <div class="graph-legend">${sections.filter((s) => !s.library).map((s) => `<span style="--sec:${s.color}"><i></i>${escapeHtml(s.label)}</span>`).join("")}<span style="--sec:${libSection()?.color ?? "#475569"}"><i class="sq"></i>论文笔记（方块）</span><span><i style="background:var(--border-strong)"></i>圆点：知识章节</span></div>
+      </div>`;
+    const wrap = $("#graphWrap"), tip = $("#graphTip");
+    const adj = new Map();
+    for (const [a, b] of E) { (adj.get(a) ?? adj.set(a, new Set()).get(a)).add(b); (adj.get(b) ?? adj.set(b, new Set()).get(b)).add(a); }
+    wrap?.querySelectorAll(".node").forEach((g) => {
+      const id = g.dataset.id;
+      g.addEventListener("mouseenter", (e) => {
+        wrap.classList.add("focus");
+        const nb = adj.get(id) ?? new Set();
+        wrap.querySelectorAll(".node").forEach((x) => x.classList.toggle("on", x.dataset.id === id || nb.has(x.dataset.id)));
+        wrap.querySelectorAll(".edge").forEach((x) => x.classList.toggle("on", x.dataset.a === id || x.dataset.b === id));
+        const f = byPath(id);
+        if (f && tip) { tip.innerHTML = `<b>${escapeHtml(f.title)}</b>${escapeHtml(TYPE_LABEL[f.type] ?? "")}${f.year ? ` · ${escapeHtml(String(f.year))}` : ""} · ${nb.size} 个关联${f.summary ? `<div class="small" style="opacity:.8;margin-top:4px">${escapeHtml(f.summary.slice(0, 80))}</div>` : ""}`; tip.classList.add("show"); }
+      });
+      g.addEventListener("mousemove", (e) => { if (!tip) return; const r = wrap.getBoundingClientRect(); tip.style.left = `${Math.min(r.width - 290, e.clientX - r.left + 14)}px`; tip.style.top = `${e.clientY - r.top + 14}px`; });
+      g.addEventListener("mouseleave", () => { wrap.classList.remove("focus"); tip?.classList.remove("show"); });
+      g.addEventListener("click", () => { location.hash = "#/" + id; });
+    });
+    document.title = `关联图 · ${APP}`;
+    highlightActive(); mainEl.scrollTo(0, 0);
+    if (isMobile()) layout.classList.remove("nav-open");
+  }
+
   // ---------- 分类浏览：#/browse?section=&type=&level=&status=&tag=&q= ----------
   const FACETS = [
-    { key: "section", name: "主题", get: (f) => sectionOf(f.path)?.key ?? "_about", label: (v) => (v === "_about" ? "📘 关于" : `${SECTIONS[v]?.icon ?? sections.find((x) => x.key === v)?.icon ?? "📁"} ${sections.find((x) => x.key === v)?.label ?? v}`), order: () => [...sections.map((x) => x.key), "_about"] },
+    { key: "section", name: "主题", get: (f) => sectionOf(f.path)?.key ?? "_about", label: (v) => (v === "_about" ? "关于" : sections.find((x) => x.key === v)?.label ?? v), icon: (v) => { const s = sections.find((x) => x.key === v); return `<span class="sec-icon sm" style="--sec:${s?.color ?? "#64748b"}">${icon(s?.icon ?? "book")}</span>`; }, order: () => [...sections.map((x) => x.key), "_about"] },
     { key: "type", name: "类型", get: (f) => f.type, label: (v) => TYPE_LABEL[v] ?? v, order: () => ORDER.type },
     { key: "level", name: "难度", get: (f) => f.level, label: (v) => LEVEL_LABEL[v] ?? v, order: () => ORDER.level },
     { key: "status", name: "状态", get: (f) => f.status, label: (v) => STATUS_LABEL[v] ?? v, order: () => ORDER.status },
   ];
   const browseLink = (params, k, v) => { const p = new URLSearchParams(params); if (v == null || p.get(k) === v) p.delete(k); else p.set(k, v); const qs = p.toString(); return `#/browse${qs ? "?" + qs : ""}`; };
-  function browsePool() {
-    const seen = new Set();
-    return flatFiles.filter((f) => !seen.has(f.path) && seen.add(f.path) && !f.path.startsWith("templates/"));
-  }
   function browseMatch(f, sel, skip) {
     for (const fc of FACETS) if (fc.key !== skip && sel[fc.key] && fc.get(f) !== sel[fc.key]) return false;
     if (skip !== "type" && !sel.type && f.type === "index") return false; // 目录页默认不列出，选"目录"类型才显示
@@ -413,10 +711,10 @@
     const p = f.path.split("/");
     const sub = p.length > 3 ? SUBS[`${p[1]}/${p[2]}`]?.label ?? p[2] : "";
     return `<a class="doc-card" href="#/${f.path}" style="--sec:${s?.color ?? "#64748b"}">
-      <div class="dc-top"><span class="type-badge t-${escapeHtml(f.type ?? "")}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type ?? "")}</span>${sub ? `<span class="sec-chip">${escapeHtml(sub)}</span>` : ""}${f.chapter > 0 && f.type === "tutorial" ? `<span class="dc-num">第 ${f.chapter} 章</span>` : ""}</div>
+      <div class="dc-top"><span class="type-badge t-${escapeHtml(f.type ?? "")}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type ?? "")}</span>${sub ? `<span class="sec-chip">${escapeHtml(sub)}</span>` : ""}${f.chapter > 0 && f.type === "tutorial" ? `<span class="dc-num">CH ${String(f.chapter).padStart(2, "0")}</span>` : ""}</div>
       <h3>${escapeHtml(f.title)}</h3>
       ${f.summary ? `<p>${escapeHtml(f.summary)}</p>` : ""}
-      <div class="dc-meta">${f.level ? `<span><i class="dot ${escapeHtml(f.level)}"></i>${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : ""}${f.estimated_time ? `<span>⏱ ${escapeHtml(f.estimated_time)}</span>` : ""}${f.year ? `<span>${escapeHtml(String(f.year))}</span>` : ""}<span class="st st-${escapeHtml(f.status ?? "")}">${escapeHtml(STATUS_LABEL[f.status] ?? f.status ?? "")}</span></div>
+      <div class="dc-meta">${f.level ? `<span><i class="dot ${escapeHtml(f.level)}"></i>${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : ""}${f.estimated_time ? `<span>${icon("clock")}${escapeHtml(f.estimated_time)}</span>` : ""}${f.year ? `<span>${escapeHtml(String(f.year))}</span>` : ""}${f.questions ? `<span class="badge q">${f.questions} 待解决</span>` : ""}<span class="st st-${escapeHtml(f.status ?? "")}">${escapeHtml(STATUS_LABEL[f.status] ?? f.status ?? "")}</span></div>
       ${tags ? `<div class="dc-tags">${tags}</div>` : ""}
     </a>`;
   }
@@ -425,24 +723,24 @@
     const sel = { tag: params.get("tag") || "", q: (params.get("q") || "").trim().toLowerCase() };
     for (const fc of FACETS) sel[fc.key] = params.get(fc.key) || "";
     currentPath = ""; tocEl.innerHTML = "";
-    const pool = browsePool();
+    const pool = uniqFiles();
     const facetRow = (fc) => {
       const counts = new Map();
       for (const f of pool) if (browseMatch(f, sel, fc.key)) { const v = fc.get(f); if (v) counts.set(v, (counts.get(v) ?? 0) + 1); }
       const order = fc.order();
       const values = [...new Set([...order.filter((v) => counts.has(v) || v === sel[fc.key]), ...[...counts.keys()].filter((v) => !order.includes(v))])];
-      const opts = values.map((v) => `<a class="fchip${sel[fc.key] === v ? " on" : ""}" href="${browseLink(params, fc.key, v)}">${escapeHtml(fc.label(v))}<b>${counts.get(v) ?? 0}</b></a>`).join("");
-      return `<div class="facet"><span class="facet-name">${fc.name}</span><div class="facet-opts"><a class="fchip${sel[fc.key] ? "" : " on"}" href="${browseLink(params, fc.key, null)}">全部</a>${opts}</div></div>`;
+      const opts = values.map((v) => `<a class="fchip${sel[fc.key] === v ? " on" : ""}" href="${browseLink(params, fc.key, v)}">${fc.icon ? fc.icon(v) : ""}${escapeHtml(fc.label(v))}<b>${counts.get(v) ?? 0}</b></a>`).join("");
+      return `<div class="toolbar-row"><span class="lbl">${fc.name}</span><a class="fchip${sel[fc.key] ? "" : " on"}" href="${browseLink(params, fc.key, null)}">全部</a>${opts}</div>`;
     };
     // 标签：显示当前结果里最常见的标签，选中的标签固定在最前
     const tagCount = new Map();
     for (const f of pool) if (browseMatch(f, { ...sel, tag: "" })) for (const t of f.tags || []) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
     const topTags = [...tagCount].sort((a, b) => b[1] - a[1]).slice(0, 18).map(([t]) => t).filter((t) => t !== sel.tag);
-    const tagRow = `<div class="facet"><span class="facet-name">标签</span><div class="facet-opts">${sel.tag ? `<a class="fchip on" href="${browseLink(params, "tag", null)}">#${escapeHtml(sel.tag)} ✕</a>` : ""}${topTags.map((t) => `<a class="fchip tagc" href="${browseLink(params, "tag", t)}">#${escapeHtml(t)}<b>${tagCount.get(t)}</b></a>`).join("")}</div></div>`;
+    const tagRow = `<div class="toolbar-row"><span class="lbl">标签</span>${sel.tag ? `<a class="fchip on" href="${browseLink(params, "tag", null)}">#${escapeHtml(sel.tag)} ✕</a>` : ""}${topTags.map((t) => `<a class="fchip" href="${browseLink(params, "tag", t)}">#${escapeHtml(t)}<b>${tagCount.get(t)}</b></a>`).join("")}</div>`;
     const active = FACETS.some((fc) => sel[fc.key]) || sel.tag || sel.q;
-    contentEl.innerHTML = `<div class="doc-head browse-head"><h1>🗂 分类浏览</h1><p class="muted">按主题、类型、难度、状态和标签组合筛选；数字是在其他条件不变时能筛到的篇数。</p></div>
-      <div class="facets">
-        <div class="facet"><span class="facet-name">关键词</span><div class="facet-opts"><input id="browseQ" class="browse-q" type="search" placeholder="在标题、简介、标签里找…" value="${escapeHtml(params.get("q") || "")}" />${active ? `<a class="clear-all" href="#/browse">清除全部条件</a>` : ""}</div></div>
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Browse</div><h1>分类浏览</h1><p>按主题、类型、难度、状态和标签组合筛选；数字是在其他条件不变时能筛到的篇数。</p></div>
+      <div class="toolbar">
+        <div class="toolbar-row"><span class="lbl">关键词</span><input id="browseQ" class="q-input" type="search" placeholder="在标题、简介、标签里找…" value="${escapeHtml(params.get("q") || "")}" />${active ? `<a class="clear-all" href="#/browse">清除全部条件</a>` : ""}</div>
         ${FACETS.map(facetRow).join("")}${tagRow}
       </div>
       <div id="browseResults"></div>`;
@@ -455,7 +753,7 @@
       window.history.replaceState(null, "", `#/browse${p.toString() ? "?" + p : ""}`); // 注意：本文件的 history 变量是聊天记录
       renderBrowseResults(pool, { ...sel, q: v.toLowerCase() });
     }, 120); });
-    document.title = "分类浏览 · Learning 知识库";
+    document.title = `分类浏览 · ${APP}`;
     highlightActive();
     mainEl.scrollTo(0, 0);
     if (isMobile()) layout.classList.remove("nav-open");
@@ -467,10 +765,10 @@
     for (const f of hits) { const k = sectionOf(f.path)?.key ?? "_about"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(f); }
     const keys = [...groups.keys()].sort((a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99));
     $("#browseResults").innerHTML = hits.length
-      ? `<div class="browse-count">共 <b>${hits.length}</b> 篇</div>` + keys.map((k) => {
+      ? `<div class="count-line">${hits.length} / ${pool.filter((f) => f.type !== "index").length} documents</div>` + keys.map((k) => {
           const s = sections.find((x) => x.key === k);
           const files = groups.get(k).sort((a, b) => a.path.localeCompare(b.path));
-          return `<section class="browse-group" style="--sec:${s?.color ?? "#64748b"}"><h2 class="bg-title"><span class="sec-icon">${s?.icon ?? "📘"}</span>${escapeHtml(s?.label ?? "关于")}<span class="count">${files.length}</span></h2><div class="doc-grid">${files.map(docCard).join("")}</div></section>`;
+          return `<section class="browse-group" style="--sec:${s?.color ?? "#64748b"}"><h2 class="bg-title"><span class="sec-icon">${icon(s?.icon ?? "book")}</span>${escapeHtml(s?.label ?? "关于")}<span class="count">${files.length}</span></h2><div class="doc-grid">${files.map(docCard).join("")}</div></section>`;
         }).join("")
       : `<div class="browse-empty"><p>没有符合条件的文档。</p><a class="btn small" href="#/browse">清除全部条件</a></div>`;
   }
@@ -480,26 +778,29 @@
   async function showSearch(q) {
     const hits = await data.search(q, 30);
     currentPath = ""; tocEl.innerHTML = "";
-    contentEl.innerHTML = `<div class="doc-head"><h1>搜索：${escapeHtml(q)}</h1><div class="muted">${hits.length} 条结果</div></div>` + (hits.length ? hits.map((h) => `<div class="hit"><a class="ttl" href="#/${h.relPath}#${slug(h.heading)}">${escapeHtml(h.title)}</a><div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`).join("") : `<p class="muted">没有结果。试试换个关键词，或者问右上角的助教。</p>`);
-    document.title = `搜索 ${q} · Learning 知识库`; highlightActive();
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Search</div><h1>搜索：${escapeHtml(q)}</h1><p>${hits.length} 条结果</p></div>` + (hits.length ? hits.map((h) => `<div class="hit"><a class="ttl" href="#/${h.relPath}#${slug(h.heading)}">${escapeHtml(h.title)}</a><div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`).join("") : `<p class="muted">没有结果。试试换个关键词，或者问右上角的研究助手。</p>`);
+    document.title = `搜索 ${q} · ${APP}`; highlightActive();
   }
   const palette = $("#palette"), pInput = $("#paletteInput"), pRes = $("#paletteResults");
   let pSel = 0, pHits = [], pTimer = null, pMode = "nav"; // nav：打开文档；insert：把选中的章节作为相对链接插进编辑器
+  const QUICK = [["home", "总览", "#/"], ["papers", "论文库", "#/papers"], ["graph", "关联图", "#/graph"], ["filter", "分类浏览", "#/browse"], ["calendar", "论文时间线", "#/papers?view=timeline"]];
+  const paletteEmpty = () => pMode === "insert" ? `<div class="empty">输入关键词，选中后插入相对链接</div>` : `<div class="actions">${[...QUICK, ...(STATIC ? [] : [["edit", "新建笔记", "#/new"]])].map(([i, l, h]) => `<a href="${h}">${icon(i)}${l}</a>`).join("")}</div><div class="empty">输入关键词搜索章节、论文与命令（中英文均可）</div>`;
   function openPalette(mode = "nav") {
     pMode = mode === "insert" && editor ? "insert" : "nav";
     palette.hidden = false; pInput.value = ""; pInput.placeholder = pMode === "insert" ? "搜索要链接的章节…" : "搜索标题、段落、命令…（支持中英文）";
     $("#paletteFoot").textContent = pMode === "insert" ? "↑↓ 选择 · Enter 插入链接 · Esc 取消" : "↑↓ 选择 · Enter 打开 · Esc 关闭";
-    pRes.innerHTML = `<div class="empty">输入关键词开始搜索</div>`; setTimeout(() => pInput.focus(), 0);
+    pRes.innerHTML = paletteEmpty(); setTimeout(() => pInput.focus(), 0);
   }
   function closePalette() { palette.hidden = true; if (pMode === "insert") { pMode = "nav"; $("#edText")?.focus(); } }
   $("#searchBtn").addEventListener("click", () => openPalette());
   palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
+  pRes.addEventListener("click", (e) => { if (e.target.closest(".actions a")) closePalette(); });
   pInput.addEventListener("input", () => { clearTimeout(pTimer); pTimer = setTimeout(async () => {
-    const q = pInput.value.trim(); if (!q) { pRes.innerHTML = `<div class="empty">输入关键词开始搜索</div>`; return; }
+    const q = pInput.value.trim(); if (!q) { pRes.innerHTML = paletteEmpty(); return; }
     pHits = await data.search(q, 12); pSel = 0; renderPalette(q);
   }, 150); });
   function renderPalette(q) {
-    pRes.innerHTML = pHits.length ? pHits.map((h, i) => `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div><div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`).join("") : `<div class="empty">没有结果</div>`;
+    pRes.innerHTML = pHits.length ? pHits.map((h, i) => { const f = byPath(h.relPath); return `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : "<span></span>"}<div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`; }).join("") : `<div class="empty">没有结果</div>`;
     pRes.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => goHit(pHits[Number(r.dataset.i)])));
   }
   function goHit(h) { if (!h) return; if (pMode === "insert" && editor?.insertLink) { editor.insertLink(h); closePalette(); return; } closePalette(); location.hash = `#/${h.relPath}#${slug(h.heading)}`; }
@@ -522,6 +823,8 @@
     if (!h) return showHome();
     if (h.startsWith("search=")) return showSearch(decodeURIComponent(h.slice(7)));
     if (h === "browse" || h.startsWith("browse?")) return showBrowse(h.slice(7));
+    if (h === "papers" || h.startsWith("papers?")) return showPapers(h.slice(7));
+    if (h === "graph" || h.startsWith("graph?")) return showGraph(h.slice(6));
     if (!STATIC && (h === "new" || h.startsWith("new?"))) { const q = new URLSearchParams(h.slice(4)); return showEditor({ dir: q.get("dir") || "", prefill: q.get("prefill") === "1" }); }
     if (!STATIC && h.startsWith("edit/")) return showEditor({ path: decodeURIComponent(h.slice(5).split("#")[0]) });
     const [p, hash] = h.split("#");
@@ -593,7 +896,7 @@
     if (isEdit && raw && !raw.editable) { contentEl.innerHTML = `<div class="doc-head"><h1>这篇文档不能在网页里修改</h1></div><p>${escapeHtml(path)}</p>`; return; }
     const startDir = isEdit ? path.slice(0, path.lastIndexOf("/")) : dir || (lastDoc()?.path ? lastDoc().path.slice(0, lastDoc().path.lastIndexOf("/")) : "notes");
     const canRegister = !isEdit && !startDir.startsWith("Knowledge/Papers/") && startDir !== "notes";
-    contentEl.innerHTML = `<div class="doc-head editor-head"><h1>${isEdit ? "✎ 编辑文档" : "✎ 新建笔记"}</h1>
+    contentEl.innerHTML = `<div class="doc-head editor-head"><div class="eyebrow">${isEdit ? "Edit" : "New note"}</div><h1>${isEdit ? "编辑文档" : "新建笔记"}</h1>
         <p class="editor-help">保存后本机服务会自动：重建索引 → 刷新论文库目录 → 重新生成静态站，并刷新所有打开的页面。右下角实时对照 <a href="#/STANDARD.md">STANDARD.md</a> 检查；草稿会自动暂存在浏览器里。</p></div>
       <div class="editor">
         <div class="editor-top"><div class="editor-bar">
@@ -606,7 +909,7 @@
           <a class="btn" href="${isEdit ? "#/" + path : "#/"}">取消</a>
           <button type="button" class="btn primary" id="edSave">保存 <kbd>⌘S</kbd></button>
         </div>
-        <div class="ed-tools" role="toolbar" aria-label="插入">${SNIPPETS.map(([l], i) => `<button type="button" class="tool" data-i="${i}">${escapeHtml(l)}</button>`).join("")}<button type="button" class="tool" id="edLink" title="搜索知识库并插入相对链接">🔎 插入章节链接</button></div></div>
+        <div class="ed-tools" role="toolbar" aria-label="插入">${SNIPPETS.map(([l], i) => `<button type="button" class="tool" data-i="${i}">${escapeHtml(l)}</button>`).join("")}<button type="button" class="tool" id="edLink" title="搜索知识库并插入相对链接">${icon("link")} 插入章节链接</button></div></div>
         <div id="edDraft" class="draft-bar" hidden></div>
         <div class="editor-panes" id="edPanes"><textarea id="edText" spellcheck="false" placeholder="第一行必须是 --- 开头的 frontmatter"></textarea><div class="editor-right"><div id="edLint" class="editor-lint"></div><div id="edPreview" class="content editor-preview"></div></div></div>
         <div id="edStatus" class="editor-status" hidden></div>
@@ -674,7 +977,7 @@
       applyTemplate();
       edTpl.addEventListener("change", () => { if (editor.dirty && !confirm("切换模板会清空当前内容，继续？")) { return; } applyTemplate(); });
       edDir.addEventListener("change", () => { if (!editor.dirty) applyTemplate(); else if (/^\d{2}-$/.test(edName.value.trim())) edName.value = `${nextNumber(edDir.value.trim())}-`; $("#edRegister")?.closest("label")?.toggleAttribute("hidden", edDir.value.trim().startsWith("Knowledge/Papers/") || edDir.value.trim() === "notes"); });
-      // 从助教回答"存为笔记"带过来的内容
+      // 从研究助手回答"存为笔记"带过来的内容
       if (prefill) {
         let pf = null; try { pf = JSON.parse(sessionStorage.getItem("kbPrefill") || "null"); sessionStorage.removeItem("kbPrefill"); } catch {}
         if (pf) {
@@ -732,7 +1035,7 @@
       });
       if (!problems.length && !remind) setTimeout(() => { if (editor && !editor.dirty) { location.hash = "#/" + j.relPath; toast(`✅ 已保存${r?.status === "added" ? "并登记到 00-README" : ""} · 索引与静态站已重建`); } }, 900);
     }
-    document.title = `${isEdit ? "编辑" : "新建笔记"} · Learning 知识库`;
+    document.title = `${isEdit ? "编辑" : "新建笔记"} · ${APP}`;
     mainEl.scrollTo(0, 0);
     if (isMobile()) layout.classList.remove("nav-open");
     setTimeout(() => edText.focus(), 0);
@@ -756,12 +1059,12 @@
     };
   }
 
-  // ---------- 助教 ----------
+  // ---------- 研究助手 ----------
   const setChat = (open) => { document.body.classList.toggle("chat-open", open); if (open) setTimeout(() => $("#chatInput").focus(), 200); };
   $("#toggleChat").addEventListener("click", () => setChat(!document.body.classList.contains("chat-open")));
   $("#closeChat").addEventListener("click", () => setChat(false));
   $("#clearChat").addEventListener("click", () => { history = []; chatLog.querySelectorAll(".msg").forEach((m) => m.remove()); $("#chatEmpty").hidden = false; });
-  document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => sendChat(c.dataset.q)));
+  document.querySelectorAll(".chip[data-q]").forEach((c) => c.addEventListener("click", () => sendChat(c.dataset.q)));
   const input = $("#chatInput");
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#chatForm").requestSubmit(); } });
@@ -770,7 +1073,7 @@
   function addMsg(role) {
     $("#chatEmpty").hidden = true;
     const div = document.createElement("div"); div.className = `msg ${role}`;
-    div.innerHTML = `<div class="avatar">${role === "user" ? "我" : "🤖"}</div><div class="bubble">${role === "assistant" ? `<div class="tools"></div><div class="body"><span class="typing"></span></div>` : ""}</div>`;
+    div.innerHTML = `<div class="avatar">${role === "user" ? "我" : icon("flask")}</div><div class="bubble">${role === "assistant" ? `<div class="tools"></div><div class="body"><span class="typing"></span></div>` : ""}</div>`;
     chatLog.appendChild(div); chatLog.scrollTop = chatLog.scrollHeight; return div;
   }
   function renderAssistant(div, text, done) {
@@ -780,10 +1083,10 @@
     if (done && !STATIC && text.trim() && !div.querySelector(".msg-actions")) {
       // 把这条回答一键变成 notes/ 下的笔记（带来源问题），进编辑器再改
       const bar = document.createElement("div"); bar.className = "msg-actions";
-      const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.textContent = "✎ 存为笔记";
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.innerHTML = `${icon("edit")}存为笔记`;
       b.addEventListener("click", () => {
         const q = (div.previousElementSibling?.classList.contains("user") ? div.previousElementSibling.querySelector(".bubble").textContent : "").trim();
-        const title = (q.split("\n")[0] || "助教回答").replace(/[#*`[\]]/g, "").slice(0, 40);
+        const title = (q.split("\n")[0] || "研究助手回答").replace(/[#*`[\]]/g, "").slice(0, 40);
         try { sessionStorage.setItem("kbPrefill", JSON.stringify({ title, body: (q ? `> 来源问题：${q.replace(/\n+/g, " ")}\n\n` : "") + text })); } catch {}
         setChat(false); location.hash = "#/new?dir=notes&prefill=1";
       });
@@ -804,7 +1107,7 @@
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       for await (const ev of readSSE(res)) {
         if (ev.type === "text") { acc += ev.text; if (Date.now() - last > 80) { renderAssistant(div, acc, false); last = Date.now(); chatLog.scrollTop = chatLog.scrollHeight; } }
-        else if (ev.type === "tool_call") { const s = document.createElement("span"); s.textContent = `🔧 ${ev.name}${ev.input?.query ? ": " + ev.input.query : ev.input?.path ? ": " + ev.input.path : ""}`; toolsEl.appendChild(s); }
+        else if (ev.type === "tool_call") { const s = document.createElement("span"); s.textContent = `${ev.name}${ev.input?.query ? ": " + ev.input.query : ev.input?.path ? ": " + ev.input.path : ""}`; toolsEl.appendChild(s); }
         else if (ev.type === "status") { const s = document.createElement("span"); s.textContent = `ℹ️ ${ev.text}`; toolsEl.appendChild(s); }
         else if (ev.type === "error") acc += `\n\n> ⚠️ 出错：${ev.message}`;
         else if (ev.type === "done") acc = ev.text || acc;
@@ -856,10 +1159,12 @@
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.hidden ? openPalette() : closePalette(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && editor) { e.preventDefault(); editor.save?.(); return; }
     if (e.key === "Escape") { closePalette(); layout.classList.remove("nav-open"); if (document.activeElement === input) setChat(false); return; }
-    if (typing) return;
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); openPalette(); }
     else if (e.key === "[") layout.classList.toggle(isMobile() ? "nav-open" : "nav-hidden");
     else if (e.key === "]") STATIC ? window.open(LOCAL_URL + location.hash, "_blank") : setChat(!document.body.classList.contains("chat-open"));
+    else if (e.key === "p") location.hash = "#/papers";
+    else if (e.key === "g") location.hash = "#/graph";
     else if (e.key === "e" && !STATIC && currentPath && canEdit(currentPath)) location.hash = "#/edit/" + currentPath;
     else if (e.key === "n" && !STATIC) location.hash = currentPath.includes("/") ? `#/new?dir=${encodeURIComponent(currentPath.slice(0, currentPath.lastIndexOf("/")))}` : "#/new";
     else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && currentPath) {
@@ -869,10 +1174,10 @@
   $("#navBackdrop").addEventListener("click", () => layout.classList.remove("nav-open"));
 
   if (STATIC) {
-    // 公网静态站没有后端：隐藏导入，助教按钮跳到本机版（Mac 上开机自启的 http://localhost:8787）
+    // 公网静态站没有后端：隐藏导入与写笔记，助手按钮跳到本机版（Mac 上开机自启的 http://localhost:8787）
     $("#importBtn").hidden = true;
     $("#newNoteBtn").hidden = true;
-    const btn = $("#toggleChat"); btn.textContent = "💬 助教（本机）"; btn.title = "AI 助教只在你电脑上的本机版可用";
+    const btn = $("#toggleChat"); btn.innerHTML = `${icon("chat")}研究助手（本机）`; btn.title = "AI 研究助手只在你电脑上的本机版可用";
     btn.replaceWith(btn.cloneNode(true));
     $("#toggleChat").addEventListener("click", () => window.open(LOCAL_URL + location.hash, "_blank"));
   } else {
