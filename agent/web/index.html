@@ -13,6 +13,7 @@
 <body>
   <div id="progress" class="progress-bar"></div>
   <div id="toast" class="toast" hidden></div>
+  <button id="toTop" class="to-top" title="回到顶部" hidden data-icon="arrowUp"></button>
 
   <header class="topbar">
     <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）" data-icon="menu"></button>
@@ -43,6 +44,12 @@
         <input id="navFilter" type="search" placeholder="筛选章节、标签…" autocomplete="off" aria-label="筛选章节" />
         <a id="navBrowse" class="nav-browse" href="#/browse" title="按主题、类型、难度、标签筛选" data-icon="filter"></a>
       </div>
+      <nav class="nav-views" aria-label="视图">
+        <a href="#/" data-nav="home" data-icon="home">总览</a>
+        <a href="#/papers" data-nav="papers" data-icon="papers">论文库</a>
+        <a href="#/graph" data-nav="graph" data-icon="graph">关联图</a>
+        <a href="#/browse" data-nav="browse" data-icon="filter">分类</a>
+      </nav>
       <div id="stats" class="nav-stats"></div>
       <div id="tree" class="tree"></div>
       <div id="navEmpty" class="nav-empty" hidden>没有匹配的章节</div>
@@ -89,7 +96,7 @@
       <textarea id="chatInput" rows="1" placeholder="提问，Enter 发送，Shift+Enter 换行"></textarea>
       <div class="chat-actions">
         <label class="muted small"><input type="checkbox" id="withContext" checked /> 结合当前文档</label>
-        <button type="submit" class="btn primary small">发送</button>
+        <span class="chat-btns"><button type="button" id="chatStop" class="btn small" hidden data-icon="square">停止</button><button type="submit" class="btn primary small">发送</button></span>
       </div>
     </form>
   </aside>
