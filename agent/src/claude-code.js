@@ -117,7 +117,7 @@ function runClaude({ prompt, signal, emit = () => {}, ...opts }) {
 
 // ---------- chat ----------
 
-const CHAT_SYSTEM = `你是「Learning 知识库」的学习助教，运行在知识库根目录。知识库内容在 Knowledge/ 下，编写规范是 STANDARD.md。
+const CHAT_SYSTEM = `你是 Copilot，「Physical AI Research」知识库的研究伙伴，运行在知识库根目录。知识库内容在 Knowledge/ 下，编写规范是 STANDARD.md。
 - 回答知识问题前先检索：Bash 运行 \`node agent/src/cli.js search <关键词>\`（BM25，中英文都行），再用 Read 读相关文档。不要凭记忆回答知识库已有的内容。
 - 面向初学者：先一句话给结论，再解释；术语第一次出现用大白话解释。用简体中文、Markdown，代码块标语言，命令不加 $。
 - 每条来自知识库的结论附链接 [标题](Knowledge/xxx.md)，路径是知识库根目录相对路径（网页会渲染成内部链接）。知识库没有的内容说明"知识库里没有"，再用自己的知识回答并标注"（知识库外）"。
@@ -128,7 +128,7 @@ const CHAT_SYSTEM = `你是「Learning 知识库」的学习助教，运行在�
 /** Same contract as agent.js chat(): history [{role, content}] ending with a user turn; returns final text. */
 export async function chat(kb, history, emit = () => {}, { signal } = {}) {
   const last = history.at(-1).content;
-  const earlier = history.slice(0, -1).map((m) => `【${m.role === "user" ? "用户" : "助教"}】\n${m.content}`).join("\n\n");
+  const earlier = history.slice(0, -1).map((m) => `【${m.role === "user" ? "用户" : "Copilot"}】\n${m.content}`).join("\n\n");
   const prompt = earlier ? `以下是本次对话之前的内容，供你理解上下文：\n\n${earlier}\n\n---\n当前问题：\n${last}` : last;
   return runClaude({
     prompt,

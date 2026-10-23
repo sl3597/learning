@@ -88,7 +88,7 @@ Learning/
 | 想做什么 | 打开 |
 |---|---|
 | 在任何设备上阅读、搜索 | 公网阅读站（GitHub Pages，push 到 `main` 自动发布），网址见 [CONTRIBUTING.md](CONTRIBUTING.md) 的"部署"一节 |
-| 问助教、导入论文、**在网页里写笔记** | 本机 http://localhost:8787（`./start.sh service install` 后开机自启，用 Claude Max 订阅）。"✎ 新建笔记"/文档页"✎ 编辑"保存后自动重建索引、刷新论文库目录并重新生成静态站 |
+| 问 Copilot、导入论文、**在网页里写笔记** | 本机 http://localhost:8787（`./start.sh service install` 后开机自启，用 Claude Max 订阅）。"✎ 新建笔记"/文档页"✎ 编辑"保存后自动重建索引、刷新论文库目录并重新生成静态站 |
 
 ## Agent 系统
 
@@ -96,12 +96,12 @@ Learning/
 
 ```bash
 ./start.sh login   # 用 Claude Max 账号登录 Claude Code（只需一次）
-./start.sh         # 启动 Web，助教与论文导入走 Max 订阅额度
+./start.sh         # 启动 Web，Copilot 与论文导入走 Max 订阅额度
 # 打开 http://localhost:8787
 ```
 
 - 网页是一个"物理智能研究工作台"：总览页看研究方向、论文时间线、最近更新与待解决问题；"论文库"按领域 / 状态 / 难度筛选并可切时间线；"关联图"把知识章节与论文的 related 画成力导向图；文档右栏有"研究状态"（状态、更新、关联数、本页待解决列表）。
-- 左侧目录树阅读所有章节，右侧研究助手随时提问（答案附文档链接），可以把回答存成笔记。
+- 左侧目录树阅读所有章节，右侧 Copilot 随时提问（答案附文档链接），可以把回答存成笔记。
 - "导入论文" 把 PDF / arXiv 自动整理成符合标准的论文笔记。
 - `npm run check` 检查所有文档是否符合 STANDARD.md。
 
