@@ -70,6 +70,8 @@
     info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
     layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
     compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.3 14.3 7.8 16.2 9.7 9.7 16.2 7.8"/>',
+    arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+    square: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
   };
   const icon = (name, cls = "") => `<svg class="ic${cls ? " " + cls : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ICONS.folder}</svg>`;
   document.querySelectorAll("[data-icon]").forEach((el) => el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon)));
@@ -165,6 +167,16 @@
     }));
     if (window.renderMathInElement) renderMathInElement(root, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }], throwOnError: false, ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"] });
     if (window.mermaid && root.querySelector(".mermaid")) mermaid.run({ nodes: root.querySelectorAll(".mermaid") }).catch(() => {});
+    // 正文标题悬停出现"复制本节链接"，方便在讨论里引用某一节
+    if (root === contentEl && currentPath) root.querySelectorAll("h2[id], h3[id]").forEach((h) => {
+      const a = document.createElement("a"); a.className = "hanchor"; a.href = `#/${currentPath}#${h.id}`; a.title = "复制本节链接"; a.innerHTML = icon("link");
+      a.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const u = `${location.origin}${location.pathname}#/${currentPath}#${h.id}`;
+        try { await navigator.clipboard.writeText(u); toast("本节链接已复制"); } catch { location.hash = `#/${currentPath}#${h.id}`; }
+      });
+      h.appendChild(a);
+    });
   }
 
   // ---------- 分类元数据：侧栏、总览、论文库、关联图、分类浏览共用 ----------
@@ -290,7 +302,7 @@
     treeEl.querySelectorAll(".file").forEach((el) => el.classList.toggle("active", el.dataset.path === currentPath));
     const h = hashPath();
     const view = h === "" ? "home" : h.startsWith("papers") ? "papers" : h.startsWith("graph") ? "graph" : h.startsWith("browse") ? "browse" : "";
-    document.querySelectorAll(".topnav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === view));
+    document.querySelectorAll(".topnav a, .nav-views a").forEach((a) => a.classList.toggle("active", a.dataset.nav === view));
     $("#navBrowse").classList.toggle("active", view === "browse");
     const active = treeEl.querySelector(".file.active");
     if (!active) return;
@@ -328,11 +340,17 @@
       f.questions ? `<span class="badge q">${icon("question")}${f.questions} 待解决</span>` : "",
     ].join("");
   }
+  // 论文条目是 div + data-href（整条可点），标题和关联章节各自是真正的链接，这样关联章节也能直接点进去
   function tlItem(f) {
     const sec = sectionOf(f.path); const deep = sec && !sec.library;
     const rel = relatedDocs(f).slice(0, 4);
-    return `<a class="tl-item" href="#/${f.path}" style="--sec:${deep ? sec.color : libSection()?.color ?? "#475569"}"><b>${escapeHtml(f.title)}</b><div class="tl-meta">${paperBadges(f)}${deep ? `<span class="sec-chip" style="--sec:${sec.color}">${icon(sec.icon)}精读专题</span>` : ""}</div>${f.summary ? `<p class="tl-sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="tl-rel">${rel.map((d) => `<span class="chip">${escapeHtml(shortTitle(d.title))}</span>`).join("")}</div>` : ""}</a>`;
+    return `<div class="tl-item" data-href="#/${f.path}" style="--sec:${deep ? sec.color : libSection()?.color ?? "#475569"}"><a class="tl-title" href="#/${f.path}">${escapeHtml(f.title)}</a><div class="tl-meta">${paperBadges(f)}${deep ? `<span class="sec-chip" style="--sec:${sec.color}">${icon(sec.icon)}精读专题</span>` : ""}</div>${f.summary ? `<p class="tl-sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="tl-rel">${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</a>`).join("")}</div>` : ""}</div>`;
   }
+  // 整块可点的卡片：点在链接 / 按钮以外的地方就打开 data-href
+  contentEl.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-href]");
+    if (el && !e.target.closest("a, button, input, select, textarea")) location.hash = el.dataset.href;
+  });
   /** 按年份分组的论文时间线（总览与论文库共用） */
   function paperTimeline(papers) {
     const groups = new Map();
@@ -425,8 +443,9 @@
     if (m.type === "paper-note") {
       const srcs = (Array.isArray(m.sources) ? m.sources : m.sources ? [m.sources] : []).map(String).filter((s) => /^https?:/.test(s));
       const rel = doc.related || [];
+      const venue = m.venue ? `<span class="badge venue">${escapeHtml(m.venue)}</span>` : srcs.some((u) => /arxiv\.org/.test(u)) ? `<span class="badge muted">arXiv 预印本</span>` : "";
       return `<section class="paper-card">
-        <div class="pc-line">${m.year ? `<span class="badge year">${escapeHtml(String(m.year))}</span>` : ""}${m.venue ? `<span class="badge venue">${escapeHtml(m.venue)}</span>` : `<span class="badge muted">预印本 / 未注明会议</span>`}${m.topic ? `<span class="badge">${escapeHtml(String(m.topic))}</span>` : ""}${srcs.map((u) => `<a class="src" href="${escapeHtml(u)}" target="_blank" rel="noopener">${icon("external")}${escapeHtml(sourceLabel(u))}</a>`).join("")}</div>
+        <div class="pc-line">${m.year ? `<span class="badge year">${escapeHtml(String(m.year))}</span>` : ""}${venue}${srcs.map((u) => `<a class="src" href="${escapeHtml(u)}" target="_blank" rel="noopener">${icon("external")}${escapeHtml(sourceLabel(u))}</a>`).join("")}</div>
         ${rel.length ? `<div class="pc-related"><span class="eyebrow">关联章节</span>${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title, 22))}</a>`).join("")}</div>` : ""}
       </section>`;
     }
@@ -436,7 +455,13 @@
   }
   async function showDoc(path, hash) {
     const doc = await data.doc(path);
-    if (!doc) { contentEl.innerHTML = `<div class="doc-head"><h1>找不到文档</h1></div><p>${escapeHtml(path)}</p>`; tocEl.innerHTML = ""; return; }
+    if (!doc) {
+      const guess = path.split("/").pop().replace(/^\d+-|\.md$/g, "").replace(/-/g, " ");
+      contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Not found</div><h1>找不到文档</h1><p><code>${escapeHtml(path)}</code> 不在知识库里，可能已改名或移动。</p></div><div class="toolbar-row"><a class="btn primary" href="#/">回到总览</a><a class="btn" href="#/search=${encodeURIComponent(guess)}">搜索相近内容</a><a class="btn" href="#/browse">分类浏览</a></div>`;
+      tocEl.innerHTML = ""; currentPath = ""; highlightActive(); return;
+    }
+    // 同一篇重新渲染（切换主题、文件在磁盘上被改动）时保持阅读位置，不要跳回顶部
+    const keepScroll = currentPath === doc.path && !hash ? mainEl.scrollTop : null;
     currentPath = doc.path;
     const m = doc.meta;
     let body = doc.body;
@@ -471,6 +496,7 @@
     document.title = `${title.replace(/[*_`]/g, "")} · ${APP}`;
     if (m.type !== "index" && doc.path.startsWith("Knowledge/")) store.set("lastDoc", JSON.stringify({ path: doc.path, title: doc.title }));
     if (hash) { const t = contentEl.querySelector(`#${CSS.escape(decodeURIComponent(hash))}`) || [...contentEl.querySelectorAll("h2,h3")].find((h) => h.textContent.trim() === decodeURIComponent(hash)); t?.scrollIntoView(); }
+    else if (keepScroll != null) mainEl.scrollTop = keepScroll;
     else mainEl.scrollTo(0, 0);
     if (isMobile()) layout.classList.remove("nav-open");
   }
@@ -525,18 +551,23 @@
     }, { root: mainEl, rootMargin: "-10% 0px -80% 0px" });
     hs.forEach((h) => tocObserver.observe(h));
   }
-  mainEl.addEventListener("scroll", () => { const p = mainEl.scrollTop / Math.max(1, mainEl.scrollHeight - mainEl.clientHeight); $("#progress").style.width = `${Math.min(100, p * 100)}%`; });
+  mainEl.addEventListener("scroll", () => {
+    const p = mainEl.scrollTop / Math.max(1, mainEl.scrollHeight - mainEl.clientHeight);
+    $("#progress").style.width = `${Math.min(100, p * 100)}%`;
+    $("#toTop").hidden = mainEl.scrollTop < 700;
+  });
+  $("#toTop").addEventListener("click", () => mainEl.scrollTo({ top: 0, behavior: "smooth" }));
 
   // ---------- 论文库：#/papers?domain=&status=&level=&view=list|timeline&q= ----------
   function paperRow(f) {
     const sec = sectionOf(f.path); const deep = sec && !sec.library;
     const rel = relatedDocs(f);
     const tags = (f.tags || []).slice(0, 5);
-    return `<a class="prow" href="#/${f.path}">
+    return `<div class="prow" data-href="#/${f.path}">
       <div class="prow-year">${escapeHtml(String(f.year ?? "—"))}<small>${deep ? "精读" : escapeHtml(domainOf(f))}</small></div>
-      <div class="prow-main"><b>${escapeHtml(f.title)}</b>${f.summary ? `<p class="sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="rel">${rel.map((d) => `<span class="chip" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</span>`).join("")}</div>` : ""}${tags.length ? `<div class="prow-tags">${tags.map((t) => `<span>#${escapeHtml(t)}</span>`).join("")}</div>` : ""}</div>
+      <div class="prow-main"><a class="prow-title" href="#/${f.path}">${escapeHtml(f.title)}</a>${f.summary ? `<p class="sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="rel">${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</a>`).join("")}</div>` : ""}${tags.length ? `<div class="prow-tags">${tags.map((t) => `<a href="#/browse?tag=${encodeURIComponent(t)}">#${escapeHtml(t)}</a>`).join("")}</div>` : ""}</div>
       <div class="prow-side"><div class="row">${f.venue ? `<span class="badge venue">${escapeHtml(f.venue)}</span>` : ""}${f.level ? `<span class="pill ${escapeHtml(f.level)}">${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : ""}</div><div class="row"><span class="st st-${escapeHtml(f.status ?? "")} small">${escapeHtml(STATUS_LABEL[f.status] ?? "")}</span>${f.questions ? `<span class="badge q">${f.questions} 待解决</span>` : ""}${f.estimated_time ? `<span class="muted small">${escapeHtml(f.estimated_time)}</span>` : ""}</div></div>
-    </a>`;
+    </div>`;
   }
   function showPapers(qs) {
     const params = new URLSearchParams(qs);
@@ -775,11 +806,36 @@
 
   // ---------- 搜索 ----------
   const hl = (s, q) => { let h = escapeHtml(s); for (const t of q.split(/\s+/).filter((x) => x.length > 1)) h = h.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), (m) => `<mark>${m}</mark>`); return h; };
+  /** 检索片段是原始 Markdown，去掉加粗、表格竖线、标题井号、链接语法等噪音再展示 */
+  const cleanSnippet = (s) => String(s ?? "")
+    .replace(/```[a-z]*/gi, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/[^\s)]+\)?/g, "").replace(/\]\(|\[|\]/g, " ") // 被截断的链接只剩半截语法，连同裸网址一起去掉
+    .replace(/<[^>]+>/g, " ").replace(/\$\$?([^$]*)\$\$?/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "").replace(/\s#{1,6}\s+/g, " · ")
+    .replace(/\*\*|__|~~/g, "").replace(/`/g, "")
+    .replace(/\|?\s*:?-{3,}:?\s*\|?/g, " ").replace(/\s*\|\s*/g, " · ")
+    .replace(/(^|\s)>\s*/g, "$1").replace(/(^|\s)[-*+]\s+/g, "$1").replace(/(^|\s)\d+\.\s+/g, "$1")
+    .replace(/(\s·\s)+/g, " · ").replace(/^\s*·\s*|\s*·\s*$/g, "").replace(/\s+/g, " ").trim();
+  const whereOf = (relPath) => { const s = sectionOf(relPath); const p = relPath.split("/"); const sub = p.length > 3 ? SUBS[`${p[1]}/${p[2]}`]?.label : ""; return s ? [s.label, sub].filter(Boolean).join(" › ") : p[0] === "Knowledge" ? p.slice(1, -1).join(" › ") : relPath; };
   async function showSearch(q) {
-    const hits = await data.search(q, 30);
+    const hits = await data.search(q, 40);
     currentPath = ""; tocEl.innerHTML = "";
-    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Search</div><h1>搜索：${escapeHtml(q)}</h1><p>${hits.length} 条结果</p></div>` + (hits.length ? hits.map((h) => `<div class="hit"><a class="ttl" href="#/${h.relPath}#${slug(h.heading)}">${escapeHtml(h.title)}</a><div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`).join("") : `<p class="muted">没有结果。试试换个关键词，或者问右上角的研究助手。</p>`);
-    document.title = `搜索 ${q} · ${APP}`; highlightActive();
+    // 按文档分组：同一篇的多个段落合并在一张卡片里，扫一眼就知道哪篇最相关
+    const groups = new Map();
+    for (const h of hits) { if (!groups.has(h.relPath)) groups.set(h.relPath, { title: h.title, path: h.relPath, items: [] }); groups.get(h.relPath).items.push(h); }
+    const groupHtml = (g) => {
+      const f = byPath(g.path), s = sectionOf(g.path);
+      return `<article class="hit-group">
+        <div class="hg-head"><a class="hg-title" href="#/${g.path}">${escapeHtml(g.title)}</a>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : ""}${s ? `<span class="sec-chip" style="--sec:${s.color}">${icon(s.icon)}${escapeHtml(whereOf(g.path))}</span>` : `<span class="muted small">${escapeHtml(g.path)}</span>`}${f?.year ? `<span class="muted small">${escapeHtml(String(f.year))}</span>` : ""}</div>
+        ${g.items.map((h) => `<a class="hit" href="#/${h.relPath}#${slug(h.heading)}"><span class="hit-where">${icon("list")}${escapeHtml(h.heading)}</span><span class="hit-snip">${hl(cleanSnippet(h.snippet), q)}</span></a>`).join("")}
+      </article>`;
+    };
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Search</div><h1>搜索</h1></div>
+      <form class="search-bar" id="searchForm">${icon("search")}<input id="searchQ" class="q-input big" type="search" value="${escapeHtml(q)}" placeholder="搜索章节、论文、命令…（中英文均可）" autocomplete="off" /><button class="btn primary" type="submit">搜索</button></form>
+      <div class="count-line">${hits.length} hits · ${groups.size} documents</div>
+      ${groups.size ? [...groups.values()].map(groupHtml).join("") : `<div class="browse-empty"><p>没有结果。换个关键词试试（支持中英文混搜），或者问研究助手。</p></div>`}`;
+    $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#searchQ").value.trim(); if (v) location.hash = "#/search=" + encodeURIComponent(v); });
+    document.title = `搜索 ${q} · ${APP}`; highlightActive(); mainEl.scrollTo(0, 0);
   }
   const palette = $("#palette"), pInput = $("#paletteInput"), pRes = $("#paletteResults");
   let pSel = 0, pHits = [], pTimer = null, pMode = "nav"; // nav：打开文档；insert：把选中的章节作为相对链接插进编辑器
@@ -788,26 +844,41 @@
   function openPalette(mode = "nav") {
     pMode = mode === "insert" && editor ? "insert" : "nav";
     palette.hidden = false; pInput.value = ""; pInput.placeholder = pMode === "insert" ? "搜索要链接的章节…" : "搜索标题、段落、命令…（支持中英文）";
-    $("#paletteFoot").textContent = pMode === "insert" ? "↑↓ 选择 · Enter 插入链接 · Esc 取消" : "↑↓ 选择 · Enter 打开 · Esc 关闭";
+    $("#paletteFoot").textContent = pMode === "insert" ? "↑↓ 选择 · Enter 插入链接 · Esc 取消" : "↑↓ 选择 · Enter 打开 · ⇧Enter 全部结果 · Esc 关闭";
     pRes.innerHTML = paletteEmpty(); setTimeout(() => pInput.focus(), 0);
   }
   function closePalette() { palette.hidden = true; if (pMode === "insert") { pMode = "nav"; $("#edText")?.focus(); } }
   $("#searchBtn").addEventListener("click", () => openPalette());
   palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
   pRes.addEventListener("click", (e) => { if (e.target.closest(".actions a")) closePalette(); });
+  let pSeq = 0; // 防止慢请求的结果覆盖后输入的关键词
   pInput.addEventListener("input", () => { clearTimeout(pTimer); pTimer = setTimeout(async () => {
-    const q = pInput.value.trim(); if (!q) { pRes.innerHTML = paletteEmpty(); return; }
-    pHits = await data.search(q, 12); pSel = 0; renderPalette(q);
+    const q = pInput.value.trim(); if (!q) { pHits = []; pRes.innerHTML = paletteEmpty(); return; }
+    const seq = ++pSeq;
+    if (!pHits.length) pRes.innerHTML = `<div class="empty">搜索中…</div>`;
+    const hits = await data.search(q, 12);
+    if (seq !== pSeq) return;
+    pHits = hits; pSel = 0; renderPalette(q);
   }, 150); });
+  const goResultsPage = (q) => { closePalette(); location.hash = "#/search=" + encodeURIComponent(q); };
   function renderPalette(q) {
-    pRes.innerHTML = pHits.length ? pHits.map((h, i) => { const f = byPath(h.relPath); return `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : "<span></span>"}<div class="where">${escapeHtml(h.relPath)} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(h.snippet, q)}</div></div>`; }).join("") : `<div class="empty">没有结果</div>`;
-    pRes.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => goHit(pHits[Number(r.dataset.i)])));
+    const rows = pHits.map((h, i) => { const f = byPath(h.relPath); return `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : "<span></span>"}<div class="where" title="${escapeHtml(h.relPath)}">${escapeHtml(whereOf(h.relPath))} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(cleanSnippet(h.snippet), q)}</div></div>`; });
+    // 最后一行"查看全部结果"：面板只给前 12 条，想看完整列表从这里进结果页
+    if (pMode !== "insert" && q) rows.push(`<div class="r more${pSel === pHits.length ? " sel" : ""}" data-i="${pHits.length}">${icon("search")}查看「${escapeHtml(q)}」的全部结果 →</div>`);
+    pRes.innerHTML = rows.length ? rows.join("") : `<div class="empty">没有结果</div>`;
+    pRes.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => { const i = Number(r.dataset.i); i < pHits.length ? goHit(pHits[i]) : goResultsPage(q); }));
+    pRes.querySelector(".r.sel")?.scrollIntoView({ block: "nearest" });
   }
   function goHit(h) { if (!h) return; if (pMode === "insert" && editor?.insertLink) { editor.insertLink(h); closePalette(); return; } closePalette(); location.hash = `#/${h.relPath}#${slug(h.heading)}`; }
   pInput.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); pSel = Math.min(pHits.length - 1, pSel + 1); renderPalette(pInput.value.trim()); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); pSel = Math.max(0, pSel - 1); renderPalette(pInput.value.trim()); }
-    else if (e.key === "Enter") { e.preventDefault(); if (pHits.length) goHit(pHits[pSel]); else if (pInput.value.trim() && pMode !== "insert") { closePalette(); location.hash = "#/search=" + encodeURIComponent(pInput.value.trim()); } }
+    const q = pInput.value.trim(), max = pMode === "insert" ? pHits.length - 1 : pHits.length; // 非插入模式多一行"全部结果"
+    if (e.key === "ArrowDown") { e.preventDefault(); pSel = Math.min(max, pSel + 1); renderPalette(q); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); pSel = Math.max(0, pSel - 1); renderPalette(q); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (q && pMode !== "insert" && (e.shiftKey || pSel >= pHits.length)) return goResultsPage(q);
+      if (pHits.length) goHit(pHits[pSel]);
+    }
     else if (e.key === "Escape") closePalette();
   });
 
@@ -1080,21 +1151,30 @@
     const body = div.querySelector(".body");
     body.innerHTML = renderMarkdown(text, "") + (done ? "" : `<span class="typing"></span>`);
     postProcess(body);
-    if (done && !STATIC && text.trim() && !div.querySelector(".msg-actions")) {
-      // 把这条回答一键变成 notes/ 下的笔记（带来源问题），进编辑器再改
+    if (done && text.trim() && !div.querySelector(".msg-actions")) {
       const bar = document.createElement("div"); bar.className = "msg-actions";
-      const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.innerHTML = `${icon("edit")}存为笔记`;
-      b.addEventListener("click", () => {
-        const q = (div.previousElementSibling?.classList.contains("user") ? div.previousElementSibling.querySelector(".bubble").textContent : "").trim();
-        const title = (q.split("\n")[0] || "研究助手回答").replace(/[#*`[\]]/g, "").slice(0, 40);
-        try { sessionStorage.setItem("kbPrefill", JSON.stringify({ title, body: (q ? `> 来源问题：${q.replace(/\n+/g, " ")}\n\n` : "") + text })); } catch {}
-        setChat(false); location.hash = "#/new?dir=notes&prefill=1";
-      });
-      bar.appendChild(b); div.querySelector(".bubble").appendChild(bar);
+      const copy = document.createElement("button"); copy.type = "button"; copy.className = "btn small ghost"; copy.innerHTML = `${icon("copy")}复制`;
+      copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(text); toast("回答已复制"); } catch { toast("复制失败"); } });
+      bar.appendChild(copy);
+      if (!STATIC) {
+        // 把这条回答一键变成 notes/ 下的笔记（带来源问题），进编辑器再改
+        const b = document.createElement("button"); b.type = "button"; b.className = "btn small ghost"; b.innerHTML = `${icon("edit")}存为笔记`;
+        b.addEventListener("click", () => {
+          const q = (div.previousElementSibling?.classList.contains("user") ? div.previousElementSibling.querySelector(".bubble").textContent : "").trim();
+          const title = (q.split("\n")[0] || "研究助手回答").replace(/[#*`[\]]/g, "").slice(0, 40);
+          try { sessionStorage.setItem("kbPrefill", JSON.stringify({ title, body: (q ? `> 来源问题：${q.replace(/\n+/g, " ")}\n\n` : "") + text })); } catch {}
+          setChat(false); location.hash = "#/new?dir=notes&prefill=1";
+        });
+        bar.appendChild(b);
+      }
+      div.querySelector(".bubble").appendChild(bar);
     }
   }
+  let chatAbort = null; // 生成中的请求，点"停止"中断
+  $("#chatStop").addEventListener("click", () => chatAbort?.abort());
   async function sendChat(text) {
     text = (text || "").trim(); if (!text) return;
+    if (chatAbort) return toast("上一条还在生成，先点停止或等它结束");
     setChat(true);
     const withCtx = $("#withContext").checked && currentPath;
     const content = withCtx ? `${text}\n\n（我正在阅读：${currentPath}）` : text;
@@ -1102,8 +1182,9 @@
     const u = addMsg("user"); u.querySelector(".bubble").textContent = text;
     const div = addMsg("assistant"); const toolsEl = div.querySelector(".tools");
     let acc = "", last = 0;
+    chatAbort = new AbortController(); $("#chatStop").hidden = false;
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }), signal: chatAbort.signal });
       if (!res.ok) throw new Error((await res.json()).error || res.statusText);
       for await (const ev of readSSE(res)) {
         if (ev.type === "text") { acc += ev.text; if (Date.now() - last > 80) { renderAssistant(div, acc, false); last = Date.now(); chatLog.scrollTop = chatLog.scrollHeight; } }
@@ -1112,7 +1193,8 @@
         else if (ev.type === "error") acc += `\n\n> ⚠️ 出错：${ev.message}`;
         else if (ev.type === "done") acc = ev.text || acc;
       }
-    } catch (err) { acc += `\n\n> ⚠️ 请求失败：${err.message}`; }
+    } catch (err) { acc += err.name === "AbortError" ? "\n\n> ⚠️ 已停止生成" : `\n\n> ⚠️ 请求失败：${err.message}`; }
+    finally { chatAbort = null; $("#chatStop").hidden = true; }
     renderAssistant(div, acc || "（无回复）", true);
     history.push({ role: "assistant", content: acc });
     chatLog.scrollTop = chatLog.scrollHeight;
