@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Learning 知识库</title>
+  <title>Physical AI Research</title>
+  <meta name="description" content="物理智能研究工作台：VLA、力/触觉融合、世界模型与机械臂部署的知识章节与论文笔记" />
   <link rel="stylesheet" href="vendor/hljs/styles/github.min.css" id="hljsLight" />
   <link rel="stylesheet" href="vendor/hljs/styles/github-dark.min.css" id="hljsDark" disabled />
   <link rel="stylesheet" href="vendor/katex/katex.min.css" />
@@ -14,17 +15,25 @@
   <div id="toast" class="toast" hidden></div>
 
   <header class="topbar">
-    <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）">☰</button>
-    <a class="brand" href="#/"><span class="logo">📚</span><span>Learning 知识库</span></a>
-    <button id="searchBtn" class="search-btn" title="搜索（⌘K / Ctrl+K）">
-      <span>🔍</span><span class="search-label">搜索知识库…</span><kbd>⌘K</kbd>
+    <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）" data-icon="menu"></button>
+    <a class="brand" href="#/" title="总览">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27.3 9.5v13L16 29 4.7 22.5v-13z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.6" fill="currentColor"/><circle cx="16" cy="8" r="1.7" fill="currentColor"/><circle cx="9.2" cy="20" r="1.7" fill="currentColor"/><circle cx="22.8" cy="20" r="1.7" fill="currentColor"/><path d="M16 10v3.4M10.7 19.2l3.1-1.8M21.3 19.2l-3.1-1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span class="brand-text"><b>Physical AI</b><span>Research</span></span>
+    </a>
+    <nav class="topnav" aria-label="视图">
+      <a href="#/" data-nav="home" data-icon="home"><span class="nav-label">总览</span></a>
+      <a href="#/papers" data-nav="papers" data-icon="papers"><span class="nav-label">论文库</span></a>
+      <a href="#/graph" data-nav="graph" data-icon="graph"><span class="nav-label">关联图</span></a>
+      <a href="#/browse" data-nav="browse" data-icon="filter"><span class="nav-label">分类</span></a>
+    </nav>
+    <button id="searchBtn" class="search-btn" title="搜索（⌘K / Ctrl+K）" data-icon="search">
+      <span class="search-label">搜索章节、论文、命令…</span><kbd>⌘K</kbd>
     </button>
     <div class="topbar-actions">
-      <a id="browseBtn" class="btn ghost" href="#/browse">🗂 分类浏览</a>
-      <a id="newNoteBtn" class="btn ghost" href="#/new" title="在知识库里新建一篇笔记（保存后自动重建）">✎ 新建笔记</a>
-      <button id="importBtn" class="btn ghost">＋ 导入论文</button>
-      <button id="themeBtn" class="icon-btn" title="切换深浅色">🌙</button>
-      <button id="toggleChat" class="btn primary">💬 助教</button>
+      <a id="newNoteBtn" class="btn ghost" href="#/new" title="新建笔记（n）" data-icon="edit">笔记</a>
+      <button id="importBtn" class="btn ghost" title="导入论文生成笔记" data-icon="plus">导入论文</button>
+      <button id="themeBtn" class="icon-btn" title="切换深浅色"></button>
+      <button id="toggleChat" class="btn primary" title="研究助手（]）" data-icon="chat">研究助手</button>
     </div>
   </header>
 
@@ -32,7 +41,7 @@
     <nav id="nav" class="nav" aria-label="目录">
       <div class="nav-tools">
         <input id="navFilter" type="search" placeholder="筛选章节、标签…" autocomplete="off" aria-label="筛选章节" />
-        <a id="navBrowse" class="nav-browse" href="#/browse" title="按主题、类型、难度、标签筛选">🗂</a>
+        <a id="navBrowse" class="nav-browse" href="#/browse" title="按主题、类型、难度、标签筛选" data-icon="filter"></a>
       </div>
       <div id="stats" class="nav-stats"></div>
       <div id="tree" class="tree"></div>
@@ -46,36 +55,38 @@
     <main id="main" class="main">
       <div class="page">
         <article id="content" class="content"></article>
-        <aside id="toc" class="toc"></aside>
+        <aside id="toc" class="rail"></aside>
       </div>
     </main>
   </div>
 
-  <!-- 助教抽屉 -->
+  <!-- 研究助手抽屉 -->
   <aside id="chat" class="chat">
     <div class="chat-header">
-      <div>
-        <strong>学习助教</strong>
+      <div class="chat-title">
+        <strong data-icon="flask">研究助手</strong>
         <div id="chatModel" class="muted small"></div>
       </div>
       <div class="chat-header-actions">
         <button id="clearChat" class="btn ghost small">清空</button>
-        <button id="closeChat" class="icon-btn" title="关闭">✕</button>
+        <button id="closeChat" class="icon-btn" title="关闭" data-icon="x"></button>
       </div>
     </div>
     <div id="chatLog" class="chat-log">
       <div class="chat-empty" id="chatEmpty">
-        <p>问我任何知识库里的问题。回答会附上文档链接，也可以让我把内容整理成笔记。</p>
+        <p>基于知识库回答，并附文档链接；可以把结论整理成笔记写回知识库。</p>
         <div class="chips">
-          <button class="chip" data-q="用大白话解释当前章节的核心概念">解释当前章节</button>
+          <button class="chip" data-q="用大白话解释当前章节的核心概念，并给出一个类比">解释当前章节</button>
+          <button class="chip" data-q="把当前论文的方法和 ForceVLA 的力/触觉融合方式做对比：融合位置、训练目标、实验设置，列成表格">与 ForceVLA 对比</button>
+          <button class="chip" data-q="列出当前文档里所有『待解决』的问题，并告诉我知识库里哪些章节或论文可能已经有答案">梳理待解决问题</button>
+          <button class="chip" data-q="根据当前论文笔记生成一份可执行的复现清单：环境、数据、超参数、预期指标，缺失项标出来">生成复现清单</button>
           <button class="chip" data-q="根据当前章节给我出 3 道练习题，先不要给答案">出 3 道练习题</button>
           <button class="chip" data-q="总结当前章节的要点，并整理成一份笔记保存到 notes/">整理成笔记</button>
-          <button class="chip" data-q="我是零基础，接下来应该先学哪一章？">我该从哪学起</button>
         </div>
       </div>
     </div>
     <form id="chatForm" class="chat-form">
-      <textarea id="chatInput" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
+      <textarea id="chatInput" rows="1" placeholder="提问，Enter 发送，Shift+Enter 换行"></textarea>
       <div class="chat-actions">
         <label class="muted small"><input type="checkbox" id="withContext" checked /> 结合当前文档</label>
         <button type="submit" class="btn primary small">发送</button>

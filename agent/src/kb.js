@@ -164,6 +164,10 @@ export class KnowledgeBase {
         topic: d.meta.topic ?? null,
         tags: Array.isArray(d.meta.tags) ? d.meta.tags : [],
         year: d.meta.year ?? null,
+        venue: d.meta.venue ?? null,
+        updated: d.meta.updated ?? null,
+        related: d.meta.type === "paper-note" ? relatedOf(d) : undefined, // 前端关联图与论文库视图用
+        questions: (d.body.match(/^>\s*❓/gm) ?? []).length, // "待解决" 提示块数量（研究状态面板）
         summary: summaryOf(d.body) ?? summaryOf(d.sections.find((x) => x.heading === "一句话总结")?.text.replace(/^/, "> ") ?? ""),
       });
     }
