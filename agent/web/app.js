@@ -11,8 +11,9 @@
   let tree = null;
   let flatFiles = [];
   let currentPath = "";
-  let history = [];
+  let chatHistory = []; // Copilot 对话记录（只在内存里）；浏览器历史一律写 window.history
   let editor = null; // 打开中的笔记编辑器 { path, dirty }（见"笔记编辑器"一节）
+  let pendingScroll = null; // 后退 / 前进时要恢复的正文滚动位置（见"路由"一节）
   const isMobile = () => window.matchMedia("(max-width: 900px)").matches;
 
   // ---------- 数据来源：本机服务（/api，含助手）或静态站（data/*.json，GitHub Pages，只读）----------
@@ -23,7 +24,8 @@
   const data = {
     tree: () => getJSON(STATIC ? "data/tree.json" : "/api/tree"),
     stats: () => getJSON(STATIC ? "data/stats.json" : "/api/stats"),
-    doc: async (p) => { const r = await fetch(STATIC ? `data/doc/${p}.json` : `/api/doc?path=${encodeURIComponent(p)}`); return r.ok ? r.json() : null; },
+    // 404 → null（文档不存在）；其他失败抛错，让页面显示"服务不可用"而不是误报"找不到文档"
+    doc: async (p) => { const r = await fetch(STATIC ? `data/doc/${p}.json` : `/api/doc?path=${encodeURIComponent(p)}`); if (r.status === 404) return null; if (!r.ok) throw new Error(`${r.status} ${r.statusText || "请求失败"}`); return r.json(); },
     search: async (q, k) => {
       if (!STATIC) return getJSON(`/api/search?q=${encodeURIComponent(q)}&k=${k}`);
       // 静态站在浏览器里跑同一套 BM25（search-core.js），第一次搜索时加载
@@ -83,11 +85,72 @@
     $("#hljsLight").disabled = t === "dark";
     $("#hljsDark").disabled = t !== "dark";
     $("#themeBtn").innerHTML = icon(t === "dark" ? "sun" : "moon");
-    if (window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: t === "dark" ? "dark" : "neutral", securityLevel: "loose" }); } catch {} }
+    $("#themeBtn").setAttribute("aria-label", t === "dark" ? "切换到浅色" : "切换到深色");
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = t === "dark" ? "#000028" : "#f3f3f0";
   }
-  const initialTheme = store.get("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  applyTheme(initialTheme);
-  $("#themeBtn").addEventListener("click", () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; store.set("theme", t); applyTheme(t); if (currentPath) route(); });
+  const systemDark = matchMedia("(prefers-color-scheme: dark)");
+  applyTheme(store.get("theme") || (systemDark.matches ? "dark" : "light"));
+  // 没手动选过主题时跟随系统切换
+  systemDark.addEventListener?.("change", (e) => { if (!store.get("theme")) applyTheme(e.matches ? "dark" : "light"); });
+  // 切主题只需重画 mermaid 图（配色跟主题走），不用重新请求、重建整页
+  $("#themeBtn").addEventListener("click", () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; store.set("theme", t); applyTheme(t); rerenderMermaid(); });
+
+  // ---------- 按需加载的第三方库：KaTeX 与 mermaid 只在正文真的有公式 / 图时才加载（首屏少下载 3.5 MB）----------
+  const scriptLoads = new Map();
+  const loadScript = (src) => scriptLoads.get(src) ?? scriptLoads.set(src, new Promise((resolve, reject) => {
+    const s = document.createElement("script"); s.src = src; s.onload = resolve;
+    s.onerror = () => { scriptLoads.delete(src); reject(new Error(`加载失败：${src}`)); };
+    document.head.appendChild(s);
+  })).get(src);
+  const ensureKatex = () => (window.renderMathInElement ? Promise.resolve() : loadScript("vendor/katex/katex.min.js").then(() => loadScript("vendor/katex/contrib/auto-render.min.js")));
+  const ensureMermaid = () => (window.mermaid ? Promise.resolve() : loadScript("vendor/mermaid/mermaid.min.js"));
+  const themeName = () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  // mermaid 配色跟 Siemens 色板走（见 style.css 顶部）；antiscript：允许标签里的 <br/>，禁止脚本与 click 回调
+  const MERMAID_VARS = {
+    light: { background: "transparent", primaryColor: "#e0f0f2", primaryBorderColor: "#007993", primaryTextColor: "#000028", secondaryColor: "#f3f3f0", secondaryBorderColor: "#9999a9", tertiaryColor: "#ffffff", tertiaryBorderColor: "#ccccd6", lineColor: "#4c4c68", textColor: "#000028", fontFamily: "inherit", fontSize: "14px" },
+    dark: { background: "transparent", primaryColor: "#23233c", primaryBorderColor: "#00cccc", primaryTextColor: "#ffffff", secondaryColor: "#37374d", secondaryBorderColor: "#66667e", tertiaryColor: "#000028", tertiaryBorderColor: "#4c4c68", lineColor: "#9999a9", textColor: "#ffffff", fontFamily: "inherit", fontSize: "14px" },
+  };
+  async function renderMermaid(root) {
+    const nodes = [...root.querySelectorAll("pre.mermaid:not([data-processed])")]; if (!nodes.length) return;
+    try { await ensureMermaid(); } catch { return; }
+    try { mermaid.initialize({ startOnLoad: false, securityLevel: "antiscript", theme: "base", themeVariables: MERMAID_VARS[themeName()] }); } catch {}
+    for (const pre of nodes) if (!pre.dataset.src) pre.dataset.src = pre.textContent;
+    try { await mermaid.run({ nodes }); } catch {}
+    root.querySelectorAll(".mermaid-wrap").forEach(fitMermaid);
+  }
+  /** 图比正文宽时 mermaid 会整体缩小到看不清：给一个"放大"开关，原始大小 + 横向滚动 */
+  function fitMermaid(wrap) {
+    const svg = wrap.querySelector("svg"); if (!svg || wrap.querySelector(".mz")) return;
+    const natural = parseFloat(svg.style.maxWidth) || 0;
+    if (!natural || natural <= wrap.clientWidth - 32) return;
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "mz"; btn.title = "原始大小 / 适应宽度"; btn.innerHTML = `${icon("search")}放大`;
+    btn.addEventListener("click", () => {
+      const z = wrap.classList.toggle("zoomed");
+      svg.style.maxWidth = z ? "none" : `${natural}px`; svg.style.width = z ? `${natural}px` : "100%";
+      btn.innerHTML = `${icon("search")}${z ? "适应宽度" : "放大"}`;
+    });
+    wrap.appendChild(btn);
+  }
+  function rerenderMermaid() {
+    document.querySelectorAll(".mermaid-wrap").forEach((w) => {
+      const pre = w.querySelector("pre.mermaid"); if (!pre?.dataset.src) return;
+      pre.removeAttribute("data-processed"); pre.textContent = pre.dataset.src; w.classList.remove("zoomed"); w.querySelector(".mz")?.remove();
+    });
+    renderMermaid(document.body);
+  }
+  async function renderMath(root) {
+    if (!root.textContent.includes("$")) return;
+    try { await ensureKatex(); } catch { return; }
+    renderMathInElement(root, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }], throwOnError: false, ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"] });
+  }
+  /** 复制到剪贴板：clipboard API 只在安全上下文可用（局域网 IP 访问本机服务时不行），退回 execCommand */
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    try {
+      const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:-1000px;left:0;opacity:0";
+      document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok;
+    } catch { return false; }
+  }
 
   // ---------- Markdown 渲染 ----------
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -115,17 +178,21 @@
       return `<div class="codeblock"><div class="code-head"><span>${escapeHtml(lang || "text")}</span><button class="copy" type="button">复制</button></div><pre><code class="hljs language-${escapeHtml(lang || "text")}">${html}</code></pre></div>`;
     };
     renderer.table = (header, body) => `<div class="table-wrap"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+    // marked 给 renderer 的 href 是未清洗的原文（Copilot 的回答也走这条路），必须转义并拦掉 javascript:/data: 协议
+    const safeUrl = (u) => (/^\s*(javascript|data|vbscript|file):/i.test(String(u)) ? "#" : escapeHtml(String(u)));
     renderer.link = (href, title, text) => {
+      href = String(href ?? "");
       const t = title ? ` title="${escapeHtml(title)}"` : "";
-      if (/^https?:/.test(href)) return `<a href="${href}"${t} target="_blank" rel="noopener">${text} ↗</a>`;
+      if (/^https?:/.test(href)) return `<a href="${safeUrl(href)}"${t} target="_blank" rel="noopener">${text} ↗</a>`;
       // 页内锚点 [x](#标题)：hash 路由下要带上当前文档路径，否则会被当成文档名
-      if (href.startsWith("#") && currentPath) return `<a href="#/${currentPath}${href}"${t}>${text}</a>`;
+      if (href.startsWith("#") && currentPath) return `<a href="#/${escapeHtml(currentPath)}${escapeHtml(href)}"${t}>${text}</a>`;
       const [p, hash] = href.split("#");
-      if (p.endsWith(".md")) return `<a href="#/${resolveRel(currentPath, p)}${hash ? "#" + hash : ""}"${t}>${text}</a>`;
-      return `<a href="${href}"${t}>${text}</a>`;
+      if (p.endsWith(".md")) return `<a href="#/${escapeHtml(resolveRel(currentPath, p))}${hash ? "#" + escapeHtml(hash) : ""}"${t}>${text}</a>`;
+      return `<a href="${safeUrl(href)}"${t}>${text}</a>`;
     };
     renderer.image = (href, title, text) => {
-      const src = /^https?:/.test(href) ? href : `kb/${resolveRel(currentPath, href)}`;
+      href = String(href ?? "");
+      const src = /^https?:/.test(href) ? safeUrl(href) : /^\s*(javascript|data|vbscript|file):/i.test(href) ? "" : `kb/${escapeHtml(resolveRel(currentPath, href))}`;
       return `<img src="${src}" alt="${escapeHtml(text || "")}"${title ? ` title="${escapeHtml(title)}"` : ""} loading="lazy">`;
     };
     marked.use({ renderer });
@@ -136,16 +203,32 @@
     document.body.insertBefore(warn, layout);
   }
 
+  /** 把 $…$ / $$…$$ 先换成占位符，免得 marked 把公式里的 _ 和 * 当成强调（KaTeX 在渲染后才接手）；代码块和行内代码里的 $ 不动 */
+  function protectMath(md) {
+    const stash = [];
+    const out = md.replace(/(^|\n)(\s*```[\s\S]*?\n\s*```)(?=\n|$)|(`[^`\n]*`)|(\$\$[\s\S]+?\$\$)|(\$(?!\s)(?:\\.|[^$\n\\])+?(?<!\s)\$)/g, (m, lead, fence, code, block, inline) => {
+      if (block === undefined && inline === undefined) return m;
+      stash.push(block ?? inline);
+      return `${lead ?? ""}⁢MATH${stash.length - 1}⁢`;
+    });
+    return { md: out, restore: (html) => html.replace(/⁢MATH(\d+)⁢/g, (_, i) => escapeHtml(stash[Number(i)] ?? "")) };
+  }
   function renderMarkdown(md, basePath) {
     if (!hasMarked) return `<pre style="white-space:pre-wrap">${escapeHtml(md)}</pre>`;
     const prev = currentPath; currentPath = basePath ?? currentPath; headingIds = {};
-    let html; try { html = marked.parse(md); } catch { html = `<pre style="white-space:pre-wrap">${escapeHtml(md)}</pre>`; }
+    let html; try { const m = protectMath(md); html = m.restore(marked.parse(m.md)); } catch { html = `<pre style="white-space:pre-wrap">${escapeHtml(md)}</pre>`; }
     currentPath = prev; return html;
+  }
+  /** 正文第一个 H1 作为标题；只在第一个代码围栏之前找，免得把代码里的 # 注释当成标题删掉 */
+  function takeH1(body) {
+    const cut = body.search(/^\s*```/m); const head = cut < 0 ? body : body.slice(0, cut);
+    const m = head.match(/^#\s+(.+)$/m);
+    return m ? { title: m[1], body: body.replace(m[0], "") } : { title: null, body };
   }
 
   // 提示块前缀与 STANDARD.md 第 7.3 节一致；❓ 单独成类，右栏"研究状态"会把它们列出来
   const CALLOUTS = [["💡", "tip", "要点"], ["⚠️", "warn", "注意"], ["❓", "question", "待解决"], ["🔍", "deep", "深入"], ["🔗", "info", "关联"], ["📌", "info", "提示"]];
-  function postProcess(root) {
+  function postProcess(root, { light = false } = {}) { // light：流式回答的中间状态，跳过公式与图（只在结束时渲染一次）
     let qn = 0;
     root.querySelectorAll("blockquote").forEach((bq) => {
       const p = bq.querySelector("p"); if (!p) return;
@@ -162,18 +245,17 @@
     });
     root.querySelectorAll(".codeblock .copy").forEach((btn) => btn.addEventListener("click", async () => {
       const code = btn.closest(".codeblock").querySelector("code").innerText;
-      try { await navigator.clipboard.writeText(code); btn.textContent = "已复制 ✓"; } catch { btn.textContent = "复制失败"; }
+      btn.textContent = (await copyText(code)) ? "已复制 ✓" : "复制失败";
       setTimeout(() => (btn.textContent = "复制"), 1500);
     }));
-    if (window.renderMathInElement) renderMathInElement(root, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }], throwOnError: false, ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"] });
-    if (window.mermaid && root.querySelector(".mermaid")) mermaid.run({ nodes: root.querySelectorAll(".mermaid") }).catch(() => {});
+    if (!light) { renderMath(root); renderMermaid(root); }
     // 正文标题悬停出现"复制本节链接"，方便在讨论里引用某一节
     if (root === contentEl && currentPath) root.querySelectorAll("h2[id], h3[id]").forEach((h) => {
-      const a = document.createElement("a"); a.className = "hanchor"; a.href = `#/${currentPath}#${h.id}`; a.title = "复制本节链接"; a.innerHTML = icon("link");
+      const a = document.createElement("a"); a.className = "hanchor"; a.href = `#/${currentPath}#${h.id}`; a.title = "复制本节链接"; a.setAttribute("aria-label", "复制本节链接"); a.innerHTML = icon("link");
       a.addEventListener("click", async (e) => {
         e.preventDefault();
         const u = `${location.origin}${location.pathname}#/${currentPath}#${h.id}`;
-        try { await navigator.clipboard.writeText(u); toast("本节链接已复制"); } catch { location.hash = `#/${currentPath}#${h.id}`; }
+        if (await copyText(u)) toast("本节链接已复制"); else location.hash = `#/${currentPath}#${h.id}`;
       });
       h.appendChild(a);
     });
@@ -306,8 +388,11 @@
     $("#navBrowse").classList.toggle("active", view === "browse");
     const active = treeEl.querySelector(".file.active");
     if (!active) return;
+    // 手风琴：换到别的主题时，把之前"顺路"展开（不是用户手动点开）的顶层分组收起来，当前项才不会被挤到底边
+    treeEl.querySelectorAll(".group.depth-0").forEach((g) => { if (!g.contains(active) && !navOpen.has(g.dataset.key)) setGroupOpen(g, false, false); });
     for (let p = active.parentElement; p && p !== treeEl; p = p.parentElement) if (p.classList.contains("group")) setGroupOpen(p, true, false);
-    active.scrollIntoView({ block: "nearest" });
+    const box = $("#nav").getBoundingClientRect(), ar = active.getBoundingClientRect();
+    if (ar.top < box.top + 8 || ar.bottom > box.bottom - 8) active.scrollIntoView({ block: "center" });
   }
   // 侧栏筛选：按标题和标签过滤，命中的分组自动展开；清空后恢复原来的展开状态
   const navFilter = $("#navFilter");
@@ -399,7 +484,7 @@
       <section class="hero">
         <div class="eyebrow">Physical AI · Research Workspace</div>
         <h1>物理智能研究工作台</h1>
-        <p class="lede">围绕 VLA、力 / 触觉融合、世界模型与机械臂部署组织的研究知识库：教程章节与论文笔记双向关联，检索、问答、写笔记、导入论文在同一处完成。</p>
+        <p class="lede">围绕 VLA、力 / 触觉融合、世界模型与机械臂部署组织的研究知识库：教程章节与论文笔记双向关联，${STATIC ? "检索与关联图在这里就能用；问答、写笔记、导入论文在本机版完成。" : "检索、问答、写笔记、导入论文在同一处完成。"}</p>
         <div class="metrics">${metric(docs.length, "文档", "Documents")}${metric(papers.length, "论文笔记", "Paper notes")}${metric(docs.filter(isDone).length, "已复核", "Reviewed")}${metric(questions, "待解决问题", "Open questions", "q")}</div>
         ${resumeOk ? `<a class="resume" href="#/${resume.path}"><span>继续阅读</span><b>${escapeHtml(resume.title)}</b>${icon("arrow")}</a>` : ""}
       </section>
@@ -424,7 +509,7 @@
         </aside>
       </div>`;
   }
-  function showHome() { currentPath = ""; contentEl.innerHTML = tree ? homeHtml() : ""; tocEl.innerHTML = ""; document.title = APP; highlightActive(); mainEl.scrollTo(0, 0); }
+  function showHome() { currentPath = ""; contentEl.innerHTML = tree ? homeHtml() : ""; tocEl.innerHTML = ""; document.title = APP; highlightActive(); resetScroll(); }
 
   // ---------- 文档页 ----------
   const sourceLabel = (u) => {
@@ -453,8 +538,15 @@
     if (!papers.length || m.type === "index") return "";
     return `<section class="paper-card"><div class="pc-related" style="border:0;padding:0"><span class="eyebrow">相关论文</span>${papers.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${icon("papers")}${escapeHtml(shortTitle(d.title, 22))}${d.year ? ` <span class="muted">${escapeHtml(String(d.year))}</span>` : ""}</a>`).join("")}</div></section>`;
   }
+  /** 服务没起、500、断网：和"找不到文档"分开显示，并给重试 */
+  function showUnavailable(what, err, retry) {
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Unavailable</div><h1>${escapeHtml(what)}失败</h1><p class="muted">${escapeHtml(err?.message ?? String(err))}</p><p>${STATIC ? "页面数据加载失败，请检查网络后重试。" : "本机服务可能没有启动或刚重启：在终端里运行 <code>./start.sh</code>，然后重试。"}</p></div><div class="toolbar-row"><button type="button" class="btn primary" id="retryBtn">重试</button><a class="btn" href="#/">回到总览</a></div>`;
+    tocEl.innerHTML = ""; currentPath = ""; highlightActive();
+    $("#retryBtn")?.addEventListener("click", retry);
+  }
   async function showDoc(path, hash) {
-    const doc = await data.doc(path);
+    let doc;
+    try { doc = await data.doc(path); } catch (err) { return showUnavailable("打开文档", err, () => showDoc(path, hash)); }
     if (!doc) {
       const guess = path.split("/").pop().replace(/^\d+-|\.md$/g, "").replace(/-/g, " ");
       contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Not found</div><h1>找不到文档</h1><p><code>${escapeHtml(path)}</code> 不在知识库里，可能已改名或移动。</p></div><div class="toolbar-row"><a class="btn primary" href="#/">回到总览</a><a class="btn" href="#/search=${encodeURIComponent(guess)}">搜索相近内容</a><a class="btn" href="#/browse">分类浏览</a></div>`;
@@ -462,12 +554,12 @@
     }
     // 同一篇重新渲染（切换主题、文件在磁盘上被改动）时保持阅读位置，不要跳回顶部
     const keepScroll = currentPath === doc.path && !hash ? mainEl.scrollTop : null;
+    const restoreTo = pendingScroll; pendingScroll = null; // 后退 / 前进：回到离开时的位置
     currentPath = doc.path;
     const m = doc.meta;
-    let body = doc.body;
-    const h1 = body.match(/^#\s+(.+)$/m);
-    const title = h1 ? h1[1] : doc.title;
-    if (h1) body = body.replace(h1[0], "");
+    const h1 = takeH1(doc.body);
+    const title = h1.title ?? doc.title;
+    const body = h1.body;
     // 面包屑用侧栏同样的短名；第一段换成带颜色的主题标签
     const sec = sectionOf(doc.path);
     const crumbs = doc.path.split("/").slice(0, -1).map((seg, i, arr) => {
@@ -495,10 +587,24 @@
     highlightActive();
     document.title = `${title.replace(/[*_`]/g, "")} · ${APP}`;
     if (m.type !== "index" && doc.path.startsWith("Knowledge/")) store.set("lastDoc", JSON.stringify({ path: doc.path, title: doc.title }));
-    if (hash) { const t = contentEl.querySelector(`#${CSS.escape(decodeURIComponent(hash))}`) || [...contentEl.querySelectorAll("h2,h3")].find((h) => h.textContent.trim() === decodeURIComponent(hash)); t?.scrollIntoView(); }
+    if (hash) { const want = safeDecode(hash); const t = contentEl.querySelector(`#${CSS.escape(want)}`) || [...contentEl.querySelectorAll("h2,h3")].find((h) => h.textContent.trim() === want); t?.scrollIntoView(); }
     else if (keepScroll != null) mainEl.scrollTop = keepScroll;
+    else if (restoreTo != null) mainEl.scrollTo({ top: restoreTo, behavior: "instant" });
     else mainEl.scrollTo(0, 0);
     if (isMobile()) layout.classList.remove("nav-open");
+  }
+  /** 文档状态下拉（本机版）：写回 frontmatter 的 status 与 updated，服务端重建后 SSE 会刷新页面 */
+  async function changeStatus(sel) {
+    const path = sel.dataset.path, status = sel.value, prevStatus = sel.dataset.current;
+    sel.disabled = true;
+    try {
+      const res = await fetch("/api/status", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, status }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || res.statusText);
+      sel.dataset.current = status; sel.className = `status-select st-${status}`;
+      toast(`✅ 状态已改为「${STATUS_LABEL[status] ?? status}」，updated 已更新为 ${j.updated ?? "今天"}`);
+    } catch (err) { sel.value = prevStatus; toast(`⚠️ 修改状态失败：${err.message}`); }
+    finally { sel.disabled = false; }
   }
   // 论文 ↔ 知识章节的双向关联（来自论文 frontmatter 的 related，见 STANDARD.md 第 11 节）
   function relatedBox(doc) {
@@ -528,8 +634,12 @@
     if (doc && doc.path.startsWith("Knowledge/") && m.type !== "index") {
       const paper = m.type === "paper-note";
       const links = paper ? doc.related || [] : doc.relatedPapers || [];
+      // 本机版里状态可以直接改（草稿 → 已复核 → 稳定），不用进编辑器
+      const statusCell = !STATIC && canEdit(doc.path)
+        ? `<select class="status-select st-${escapeHtml(m.status ?? "")}" data-path="${escapeHtml(doc.path)}" data-current="${escapeHtml(m.status ?? "draft")}" title="修改文档状态（写回 frontmatter 的 status 与 updated）" aria-label="文档状态">${ORDER.status.map((v) => `<option value="${v}"${v === m.status ? " selected" : ""}>${STATUS_LABEL[v]}</option>`).join("")}</select>`
+        : `<span class="st st-${escapeHtml(m.status ?? "")}">${escapeHtml(STATUS_LABEL[m.status] ?? m.status ?? "—")}</span>`;
       html += `<div class="rail-sec rail-status"><div class="rail-title">研究状态</div>
-        <dl><dt>状态</dt><dd><span class="st st-${escapeHtml(m.status ?? "")}">${escapeHtml(STATUS_LABEL[m.status] ?? m.status ?? "—")}</span></dd>
+        <dl><dt>状态</dt><dd>${statusCell}</dd>
         <dt>更新</dt><dd>${escapeHtml(m.updated ?? "—")}</dd>
         ${paper ? `<dt>年份</dt><dd>${escapeHtml(String(m.year ?? "—"))}${m.venue ? ` · ${escapeHtml(m.venue)}` : ""}</dd>` : ""}
         <dt>${paper ? "关联章节" : "相关论文"}</dt><dd>${links.length} 篇</dd>
@@ -539,7 +649,13 @@
       </div>`;
     }
     tocEl.innerHTML = html;
-    tocEl.querySelectorAll("a[data-id]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); contentEl.querySelector(`#${CSS.escape(a.dataset.id)}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }));
+    tocEl.querySelector(".status-select")?.addEventListener("change", (e) => changeStatus(e.target));
+    // 点目录：平滑滚到该节，并把锚点写进网址（不新增历史记录），刷新 / 分享都能回到这一节
+    tocEl.querySelectorAll("a[data-id]").forEach((a) => a.addEventListener("click", (e) => {
+      e.preventDefault();
+      contentEl.querySelector(`#${CSS.escape(a.dataset.id)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", `#/${currentPath}#${a.dataset.id}`); lastHash = location.hash;
+    }));
     tocEl.querySelectorAll("a[data-q]").forEach((a) => a.addEventListener("click", (e) => {
       e.preventDefault();
       const t = contentEl.querySelector(`#${CSS.escape(a.dataset.q)}`); if (!t) return;
@@ -569,13 +685,17 @@
       <div class="prow-side"><div class="row">${f.venue ? `<span class="badge venue">${escapeHtml(f.venue)}</span>` : ""}${f.level ? `<span class="pill ${escapeHtml(f.level)}">${escapeHtml(LEVEL_LABEL[f.level] ?? f.level)}</span>` : ""}</div><div class="row"><span class="st st-${escapeHtml(f.status ?? "")} small">${escapeHtml(STATUS_LABEL[f.status] ?? "")}</span>${f.questions ? `<span class="badge q">${f.questions} 待解决</span>` : ""}${f.estimated_time ? `<span class="muted small">${escapeHtml(f.estimated_time)}</span>` : ""}</div></div>
     </div>`;
   }
+  /** 筛选条件链接：同一个值再点一次就取消（toggle），论文库 / 关联图 / 分类浏览共用 */
+  const paramLink = (base, params, k, v, { toggle = true } = {}) => { const p = new URLSearchParams(params); if (v == null || (toggle && p.get(k) === v)) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/${base}${s ? "?" + s : ""}`; };
   function showPapers(qs) {
     const params = new URLSearchParams(qs);
-    const sel = { domain: params.get("domain") || "", status: params.get("status") || "", level: params.get("level") || "", view: params.get("view") === "timeline" ? "timeline" : "list", q: (params.get("q") || "").trim().toLowerCase() };
-    currentPath = ""; tocEl.innerHTML = "";
     const lib = libSection();
     const all = uniqFiles().filter((f) => f.type === "paper-note");
-    const link = (k, v) => { const p = new URLSearchParams(params); if (v == null || (k !== "view" && p.get(k) === v)) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/papers${s ? "?" + s : ""}`; };
+    // 网址里的筛选值不认识（手改、旧链接）就当没选，别悄悄给出 0 条结果
+    const pick = (k, ok) => { const v = params.get(k) || ""; return ok.includes(v) ? v : ""; };
+    const sel = { domain: pick("domain", [...(lib ? lib.dir.dirs.map((d) => d.name) : []), "_deep"]), status: pick("status", ORDER.status), level: pick("level", ORDER.level), view: params.get("view") === "timeline" ? "timeline" : "list", q: (params.get("q") || "").trim().toLowerCase() };
+    currentPath = ""; tocEl.innerHTML = "";
+    const link = (k, v) => paramLink("papers", params, k, v, { toggle: k !== "view" });
     const match = (f, s, skip) => (skip === "domain" || !s.domain || domainOf(f) === s.domain) && (skip === "status" || !s.status || f.status === s.status) && (skip === "level" || !s.level || f.level === s.level) && (!s.q || `${f.title} ${f.summary ?? ""} ${(f.tags || []).join(" ")} ${f.venue ?? ""}`.toLowerCase().includes(s.q));
     const count = (k, v, get) => all.filter((f) => match(f, sel, k) && get(f) === v).length;
     const chip = (k, v, label, extra = "") => `<a class="fchip${sel[k] === v ? " on" : ""}" href="${link(k, v)}">${extra}${escapeHtml(label)}<b>${count(k, v, k === "domain" ? domainOf : (f) => f[k])}</b></a>`;
@@ -605,7 +725,7 @@
       render({ ...sel, q: v.toLowerCase() });
     }, 120); });
     document.title = `论文库 · ${APP}`;
-    highlightActive(); mainEl.scrollTo(0, 0);
+    highlightActive(); resetScroll();
     if (isMobile()) layout.classList.remove("nav-open");
   }
 
@@ -657,7 +777,10 @@
     const E = edges.filter(([a, b]) => inSet.has(a) && inSet.has(b));
     const W = 960, H = Math.max(560, Math.min(920, 220 + nodes.length * 16)), pad = 56;
     const N = nodes.map((f) => ({ id: f.path, f, deg: degree.get(f.path) ?? 0 }));
-    layoutGraph(N, E, W, H);
+    // 没有关联的章节不参与力导向（否则全挤在边上），放到外圈一圈，有关联的在中间
+    const linked = N.filter((n) => n.deg > 0), isolated = N.filter((n) => n.deg === 0);
+    layoutGraph(linked.length ? linked : N, E, W, H);
+    if (linked.length) isolated.forEach((n, i) => { const a = -Math.PI / 2 + (i / isolated.length) * 2 * Math.PI; n.x = W / 2 + Math.cos(a) * (W / 2 - pad - 60); n.y = H / 2 + Math.sin(a) * (H / 2 - pad); });
     // 标签防重叠：按标签框粗略估算，上下错开（几十轮即可收敛）
     const labelW = (n) => shortTitle(n.f.title, 14).length * 11 + 16;
     for (let it = 0; it < 60; it++) {
@@ -681,7 +804,7 @@
       const top = [...votes].sort((a, b) => b[1] - a[1])[0];
       return top ? sections.find((s) => s.key === top[0])?.color ?? "#66667e" : own?.color ?? "#66667e";
     };
-    const link = (k, v) => { const p = new URLSearchParams(params); if (v == null || p.get(k) === v) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/graph${s ? "?" + s : ""}`; };
+    const link = (k, v) => paramLink("graph", params, k, v);
     const secChips = `<a class="fchip${secSel ? "" : " on"}" href="${link("section", null)}">全部</a>` + sections.filter((s) => !s.library).map((s) => `<a class="fchip${secSel === s.key ? " on" : ""}" href="${link("section", s.key)}"><span class="sec-icon sm" style="--sec:${s.color}">${icon(s.icon)}</span>${escapeHtml(s.label)}</a>`).join("");
     const svgEdges = E.map(([a, b]) => { const p = pos.get(a), q = pos.get(b); return `<line class="edge" data-a="${escapeHtml(a)}" data-b="${escapeHtml(b)}" x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${q.x.toFixed(1)}" y2="${q.y.toFixed(1)}"/>`; }).join("");
     const svgNodes = N.map((n) => {
@@ -689,10 +812,11 @@
       const shape = paper ? `<rect class="shape" x="${-r}" y="${-r}" width="${2 * r}" height="${2 * r}" rx="3" fill="${c}"/>` : `<circle class="shape" r="${r}" fill="${c}" fill-opacity=".85"/>`;
       // 靠右的节点把标签放到左边，免得被画布裁掉
       const left = n.x > W - 170;
-      return `<g class="node${n.deg >= 4 ? " hub" : ""}${paper ? " paper" : ""}" data-id="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})">${shape}<text x="${(left ? -(r + 4) : r + 4).toFixed(1)}" y="4"${left ? ' text-anchor="end"' : ""}>${escapeHtml(shortTitle(n.f.title, 14))}</text></g>`;
+      return `<g class="node${n.deg >= 4 ? " hub" : ""}${paper ? " paper" : ""}" data-id="${escapeHtml(n.id)}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})" tabindex="0" role="link" aria-label="${escapeHtml(n.f.title)}（${n.deg} 个关联）">${shape}<text x="${(left ? -(r + 4) : r + 4).toFixed(1)}" y="4"${left ? ' text-anchor="end"' : ""}>${escapeHtml(shortTitle(n.f.title, 14))}</text></g>`;
     }).join("");
     const papersN = N.filter((n) => n.f.type === "paper-note").length;
-    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Knowledge Graph</div><h1>关联图</h1><p>方块是论文笔记，圆点是知识章节，连线来自论文 frontmatter 的 related；节点越大表示被关联得越多。悬停看邻居，点击打开文档。</p></div>
+    const touch = matchMedia("(hover: none)").matches;
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Knowledge Graph</div><h1>关联图</h1><p>方块是论文笔记，圆点是知识章节，连线来自论文 frontmatter 的 related；节点越大表示被关联得越多。${touch ? "点一下看邻居，再点一下打开文档。" : "悬停看邻居，点击打开文档；也可以用 Tab 和回车键。"}</p></div>
       <div class="toolbar"><div class="toolbar-row"><span class="lbl">主题</span>${secChips}<span class="seg-toggle"><a class="${showAll ? "" : "on"}" href="${link("all", null)}">只看有关联的</a><a class="${showAll ? "on" : ""}" href="${link("all", "1")}">包含全部章节</a></span></div></div>
       <div class="count-line">${N.length} nodes · ${E.length} edges · ${papersN} papers</div>
       <div class="graph-wrap" id="graphWrap">${N.length ? `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="知识章节与论文的关联图">${svgEdges}${svgNodes}</svg><div class="graph-tip" id="graphTip"></div>` : `<div class="browse-empty"><p>还没有论文关联到这个主题。</p></div>`}
@@ -701,22 +825,30 @@
     const wrap = $("#graphWrap"), tip = $("#graphTip");
     const adj = new Map();
     for (const [a, b] of E) { (adj.get(a) ?? adj.set(a, new Set()).get(a)).add(b); (adj.get(b) ?? adj.set(b, new Set()).get(b)).add(a); }
+    const placeTip = (x, y) => { if (!tip) return; const r = wrap.getBoundingClientRect(); tip.style.left = `${Math.max(0, Math.min(r.width - 290, x - r.left + 14))}px`; tip.style.top = `${y - r.top + 14}px`; };
+    const focusNode = (g) => {
+      const id = g.dataset.id;
+      wrap.classList.add("focus");
+      const nb = adj.get(id) ?? new Set();
+      wrap.querySelectorAll(".node").forEach((x) => x.classList.toggle("on", x.dataset.id === id || nb.has(x.dataset.id)));
+      wrap.querySelectorAll(".edge").forEach((x) => x.classList.toggle("on", x.dataset.a === id || x.dataset.b === id));
+      const f = byPath(id);
+      if (f && tip) { tip.innerHTML = `<b>${escapeHtml(f.title)}</b>${escapeHtml(TYPE_LABEL[f.type] ?? "")}${f.year ? ` · ${escapeHtml(String(f.year))}` : ""} · ${nb.size} 个关联${f.summary ? `<div class="small" style="opacity:.8;margin-top:4px">${escapeHtml(f.summary.slice(0, 80))}</div>` : ""}`; tip.classList.add("show"); }
+    };
+    const blurNode = () => { wrap.classList.remove("focus"); tip?.classList.remove("show"); };
     wrap?.querySelectorAll(".node").forEach((g) => {
       const id = g.dataset.id;
-      g.addEventListener("mouseenter", (e) => {
-        wrap.classList.add("focus");
-        const nb = adj.get(id) ?? new Set();
-        wrap.querySelectorAll(".node").forEach((x) => x.classList.toggle("on", x.dataset.id === id || nb.has(x.dataset.id)));
-        wrap.querySelectorAll(".edge").forEach((x) => x.classList.toggle("on", x.dataset.a === id || x.dataset.b === id));
-        const f = byPath(id);
-        if (f && tip) { tip.innerHTML = `<b>${escapeHtml(f.title)}</b>${escapeHtml(TYPE_LABEL[f.type] ?? "")}${f.year ? ` · ${escapeHtml(String(f.year))}` : ""} · ${nb.size} 个关联${f.summary ? `<div class="small" style="opacity:.8;margin-top:4px">${escapeHtml(f.summary.slice(0, 80))}</div>` : ""}`; tip.classList.add("show"); }
-      });
-      g.addEventListener("mousemove", (e) => { if (!tip) return; const r = wrap.getBoundingClientRect(); tip.style.left = `${Math.min(r.width - 290, e.clientX - r.left + 14)}px`; tip.style.top = `${e.clientY - r.top + 14}px`; });
-      g.addEventListener("mouseleave", () => { wrap.classList.remove("focus"); tip?.classList.remove("show"); });
-      g.addEventListener("click", () => { location.hash = "#/" + id; });
+      g.addEventListener("mouseenter", () => focusNode(g));
+      g.addEventListener("mousemove", (e) => placeTip(e.clientX, e.clientY));
+      g.addEventListener("mouseleave", blurNode);
+      // 键盘：Tab 到节点等于悬停，回车打开；触屏：第一下看邻居，第二下打开
+      g.addEventListener("focus", () => { focusNode(g); const r = g.getBoundingClientRect(); placeTip(r.right, r.top); });
+      g.addEventListener("blur", blurNode);
+      g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); location.hash = "#/" + id; } });
+      g.addEventListener("click", (e) => { if (touch && !g.classList.contains("on")) { focusNode(g); placeTip(e.clientX, e.clientY); return; } location.hash = "#/" + id; });
     });
     document.title = `关联图 · ${APP}`;
-    highlightActive(); mainEl.scrollTo(0, 0);
+    highlightActive(); resetScroll();
     if (isMobile()) layout.classList.remove("nav-open");
   }
 
@@ -727,7 +859,7 @@
     { key: "level", name: "难度", get: (f) => f.level, label: (v) => LEVEL_LABEL[v] ?? v, order: () => ORDER.level },
     { key: "status", name: "状态", get: (f) => f.status, label: (v) => STATUS_LABEL[v] ?? v, order: () => ORDER.status },
   ];
-  const browseLink = (params, k, v) => { const p = new URLSearchParams(params); if (v == null || p.get(k) === v) p.delete(k); else p.set(k, v); const qs = p.toString(); return `#/browse${qs ? "?" + qs : ""}`; };
+  const browseLink = (params, k, v) => paramLink("browse", params, k, v);
   function browseMatch(f, sel, skip) {
     for (const fc of FACETS) if (fc.key !== skip && sel[fc.key] && fc.get(f) !== sel[fc.key]) return false;
     if (skip !== "type" && !sel.type && f.type === "index") return false; // 目录页默认不列出，选"目录"类型才显示
@@ -786,7 +918,7 @@
     }, 120); });
     document.title = `分类浏览 · ${APP}`;
     highlightActive();
-    mainEl.scrollTo(0, 0);
+    resetScroll();
     if (isMobile()) layout.classList.remove("nav-open");
   }
   function renderBrowseResults(pool, sel) {
@@ -818,8 +950,12 @@
     .replace(/(\s·\s)+/g, " · ").replace(/^\s*·\s*|\s*·\s*$/g, "").replace(/\s+/g, " ").trim();
   const whereOf = (relPath) => { const s = sectionOf(relPath); const p = relPath.split("/"); const sub = p.length > 3 ? SUBS[`${p[1]}/${p[2]}`]?.label : ""; return s ? [s.label, sub].filter(Boolean).join(" › ") : p[0] === "Knowledge" ? p.slice(1, -1).join(" › ") : relPath; };
   async function showSearch(q) {
-    const hits = await data.search(q, 40);
     currentPath = ""; tocEl.innerHTML = "";
+    // 先给加载态：静态站第一次搜索要下载索引，本机版服务没起时也不能一片空白
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Search</div><h1>搜索</h1></div><div class="count-line">正在搜索「${escapeHtml(q)}」…${STATIC && !searchIndex ? "（第一次搜索需要先加载索引）" : ""}</div>`;
+    let hits;
+    try { hits = await data.search(q, 40); } catch (err) { return showUnavailable("搜索", err, () => showSearch(q)); }
+    if (hashPath() !== `search=${encodeURIComponent(q)}` && safeDecode(hashPath().slice(7)) !== q) return; // 等待期间已经去了别处
     // 按文档分组：同一篇的多个段落合并在一张卡片里，扫一眼就知道哪篇最相关
     const groups = new Map();
     for (const h of hits) { if (!groups.has(h.relPath)) groups.set(h.relPath, { title: h.title, path: h.relPath, items: [] }); groups.get(h.relPath).items.push(h); }
@@ -835,19 +971,33 @@
       <div class="count-line">${hits.length} hits · ${groups.size} documents</div>
       ${groups.size ? [...groups.values()].map(groupHtml).join("") : `<div class="browse-empty"><p>没有结果。换个关键词试试（支持中英文混搜），或者问 Copilot。</p></div>`}`;
     $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#searchQ").value.trim(); if (v) location.hash = "#/search=" + encodeURIComponent(v); });
-    document.title = `搜索 ${q} · ${APP}`; highlightActive(); mainEl.scrollTo(0, 0);
+    document.title = `搜索 ${q} · ${APP}`; highlightActive(); resetScroll();
   }
   const palette = $("#palette"), pInput = $("#paletteInput"), pRes = $("#paletteResults");
-  let pSel = 0, pHits = [], pTimer = null, pMode = "nav"; // nav：打开文档；insert：把选中的章节作为相对链接插进编辑器
+  let pSel = 0, pHits = [], pTimer = null, pMode = "nav", pOpener = null; // nav：打开文档；insert：把选中的章节作为相对链接插进编辑器；pOpener：关闭后把焦点还回去
+  /** 面板按文档归并：同一篇的多个段落只占一行（结果页才逐段列出），带"+N 处" */
+  function groupHits(hits) {
+    const seen = new Map(), out = [];
+    for (const h of hits) { const g = seen.get(h.relPath); if (g) g.more++; else { const x = { ...h, more: 0 }; seen.set(h.relPath, x); out.push(x); } }
+    return out;
+  }
   const QUICK = [["home", "总览", "#/"], ["papers", "论文库", "#/papers"], ["graph", "关联图", "#/graph"], ["filter", "分类浏览", "#/browse"], ["calendar", "论文时间线", "#/papers?view=timeline"]];
   const paletteEmpty = () => pMode === "insert" ? `<div class="empty">输入关键词，选中后插入相对链接</div>` : `<div class="actions">${[...QUICK, ...(STATIC ? [] : [["edit", "新建笔记", "#/new"]])].map(([i, l, h]) => `<a href="${h}">${icon(i)}${l}</a>`).join("")}</div><div class="empty">输入关键词搜索章节、论文与命令（中英文均可）</div>`;
   function openPalette(mode = "nav") {
     pMode = mode === "insert" && editor ? "insert" : "nav";
+    pOpener = document.activeElement;
     palette.hidden = false; pInput.value = ""; pInput.placeholder = pMode === "insert" ? "搜索要链接的章节…" : "搜索标题、段落、命令…（支持中英文）";
+    pInput.removeAttribute("aria-activedescendant");
     $("#paletteFoot").textContent = pMode === "insert" ? "↑↓ 选择 · Enter 插入链接 · Esc 取消" : "↑↓ 选择 · Enter 打开 · ⇧Enter 全部结果 · Esc 关闭";
     pRes.innerHTML = paletteEmpty(); setTimeout(() => pInput.focus(), 0);
   }
-  function closePalette() { palette.hidden = true; if (pMode === "insert") { pMode = "nav"; $("#edText")?.focus(); } }
+  function closePalette() {
+    if (palette.hidden) return;
+    palette.hidden = true; pHits = [];
+    if (pMode === "insert") { pMode = "nav"; $("#edText")?.focus(); }
+    else if (pOpener?.isConnected && pOpener !== document.body) pOpener.focus?.({ preventScroll: true });
+    pOpener = null;
+  }
   $("#searchBtn").addEventListener("click", () => openPalette());
   palette.addEventListener("click", (e) => { if (e.target === palette) closePalette(); });
   pRes.addEventListener("click", (e) => { if (e.target.closest(".actions a")) closePalette(); });
@@ -856,16 +1006,18 @@
     const q = pInput.value.trim(); if (!q) { pHits = []; pRes.innerHTML = paletteEmpty(); return; }
     const seq = ++pSeq;
     if (!pHits.length) pRes.innerHTML = `<div class="empty">搜索中…</div>`;
-    const hits = await data.search(q, 12);
+    let hits;
+    try { hits = await data.search(q, 30); } catch (err) { if (seq === pSeq) pRes.innerHTML = `<div class="empty">搜索失败：${escapeHtml(err.message)}${STATIC ? "" : "，本机服务可能没有启动"}</div>`; return; }
     if (seq !== pSeq) return;
-    pHits = hits; pSel = 0; renderPalette(q);
+    pHits = groupHits(hits).slice(0, 10); pSel = 0; renderPalette(q);
   }, 150); });
   const goResultsPage = (q) => { closePalette(); location.hash = "#/search=" + encodeURIComponent(q); };
   function renderPalette(q) {
-    const rows = pHits.map((h, i) => { const f = byPath(h.relPath); return `<div class="r${i === pSel ? " sel" : ""}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : "<span></span>"}<div class="where" title="${escapeHtml(h.relPath)}">${escapeHtml(whereOf(h.relPath))} › ${escapeHtml(h.heading)}</div><div class="snip">${hl(cleanSnippet(h.snippet), q)}</div></div>`; });
-    // 最后一行"查看全部结果"：面板只给前 12 条，想看完整列表从这里进结果页
-    if (pMode !== "insert" && q) rows.push(`<div class="r more${pSel === pHits.length ? " sel" : ""}" data-i="${pHits.length}">${icon("search")}查看「${escapeHtml(q)}」的全部结果 →</div>`);
+    const rows = pHits.map((h, i) => { const f = byPath(h.relPath); return `<div class="r${i === pSel ? " sel" : ""}" id="pr-${i}" role="option" aria-selected="${i === pSel}" data-i="${i}"><div class="ttl">${escapeHtml(h.title)}</div>${f?.type ? `<span class="type-badge t-${escapeHtml(f.type)}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type)}</span>` : "<span></span>"}<div class="where" title="${escapeHtml(h.relPath)}">${escapeHtml(whereOf(h.relPath))} › ${escapeHtml(h.heading)}${h.more ? `<span class="more-n">+${h.more} 处</span>` : ""}</div><div class="snip">${hl(cleanSnippet(h.snippet), q)}</div></div>`; });
+    // 最后一行"查看全部结果"：面板只给前 10 篇，想看逐段列表从这里进结果页
+    if (pMode !== "insert" && q) rows.push(`<div class="r more${pSel === pHits.length ? " sel" : ""}" id="pr-${pHits.length}" role="option" aria-selected="${pSel === pHits.length}" data-i="${pHits.length}">${icon("search")}查看「${escapeHtml(q)}」的全部结果 →</div>`);
     pRes.innerHTML = rows.length ? rows.join("") : `<div class="empty">没有结果</div>`;
+    pInput.setAttribute("aria-activedescendant", rows.length ? `pr-${pSel}` : "");
     pRes.querySelectorAll(".r").forEach((r) => r.addEventListener("click", () => { const i = Number(r.dataset.i); i < pHits.length ? goHit(pHits[i]) : goResultsPage(q); }));
     pRes.querySelector(".r.sel")?.scrollIntoView({ block: "nearest" });
   }
@@ -884,22 +1036,37 @@
 
   // ---------- 路由 ----------
   const hashPath = () => location.hash.replace(/^#\/?/, "");
+  /** 网址里的 %XX 可能是坏的（#/search=100%），解码失败就按原样用，别让整个路由崩掉 */
+  const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
   let lastHash = location.hash;
+  // 后退 / 前进恢复正文滚动位置：离开时按网址记下，popstate（浏览器历史导航时先于 hashchange 触发）时取回
+  const scrollMemo = new Map();
+  let popNav = false;
+  window.addEventListener("popstate", () => { popNav = true; });
+  const resetScroll = () => { if (pendingScroll != null) { mainEl.scrollTo({ top: pendingScroll, behavior: "instant" }); pendingScroll = null; } else mainEl.scrollTo(0, 0); };
+  /** 静态站（GitHub Pages）没有后端：编辑类入口给出说明，而不是"找不到文档" */
+  function showLocalOnly(what) {
+    currentPath = ""; tocEl.innerHTML = ""; highlightActive();
+    contentEl.innerHTML = `<div class="view-head"><div class="eyebrow">Local only</div><h1>${escapeHtml(what)}只在本机版可用</h1><p>公网阅读站是只读的。写笔记、导入论文和 Copilot 都需要在你电脑上运行本机服务：</p></div><pre class="codeblock-lite">cd ~/Learning &amp;&amp; ./start.sh</pre><div class="toolbar-row"><a class="btn primary" href="${escapeHtml(LOCAL_URL + location.hash)}" target="_blank" rel="noopener">打开本机版 ↗</a><a class="btn" href="#/">回到总览</a></div>`;
+    document.title = `${what} · ${APP}`; mainEl.scrollTo(0, 0);
+  }
   function route() {
     // 离开编辑器前确认（替换地址不会再次触发 hashchange；注意本文件的 history 变量是聊天记录）
     if (editor?.dirty && location.hash !== lastHash && !confirm("有未保存的修改，确定离开编辑器？")) { window.history.replaceState(null, "", lastHash); return; }
+    if (location.hash !== lastHash) scrollMemo.set(lastHash, mainEl.scrollTop);
+    pendingScroll = popNav && scrollMemo.has(location.hash) ? scrollMemo.get(location.hash) : null; popNav = false;
     lastHash = location.hash;
     if (editor) closeEditor();
     const h = hashPath();
     if (!h) return showHome();
-    if (h.startsWith("search=")) return showSearch(decodeURIComponent(h.slice(7)));
+    if (h.startsWith("search=")) return showSearch(safeDecode(h.slice(7)));
     if (h === "browse" || h.startsWith("browse?")) return showBrowse(h.slice(7));
     if (h === "papers" || h.startsWith("papers?")) return showPapers(h.slice(7));
     if (h === "graph" || h.startsWith("graph?")) return showGraph(h.slice(6));
-    if (!STATIC && (h === "new" || h.startsWith("new?"))) { const q = new URLSearchParams(h.slice(4)); return showEditor({ dir: q.get("dir") || "", prefill: q.get("prefill") === "1" }); }
-    if (!STATIC && h.startsWith("edit/")) return showEditor({ path: decodeURIComponent(h.slice(5).split("#")[0]) });
+    if (h === "new" || h.startsWith("new?")) { if (STATIC) return showLocalOnly("新建笔记"); const q = new URLSearchParams(h.slice(4)); return showEditor({ dir: q.get("dir") || "", prefill: q.get("prefill") === "1" }); }
+    if (h.startsWith("edit/")) return STATIC ? showLocalOnly("编辑文档") : showEditor({ path: safeDecode(h.slice(5).split("#")[0]) });
     const [p, hash] = h.split("#");
-    showDoc(decodeURIComponent(p), hash);
+    showDoc(safeDecode(p), hash);
   }
   window.addEventListener("hashchange", route);
 
@@ -999,8 +1166,8 @@
       renderLint();
       if (!$("#edPreviewOn").checked) return;
       const { body } = splitFrontmatter(edText.value);
-      const h1 = body.match(/^#\s+(.+)$/m);
-      edPreview.innerHTML = (h1 ? `<h1 class="preview-title">${renderInline(h1[1])}</h1>` : "") + renderMarkdown(h1 ? body.replace(h1[0], "") : body, targetPath());
+      const h1 = takeH1(body);
+      edPreview.innerHTML = (h1.title ? `<h1 class="preview-title">${renderInline(h1.title)}</h1>` : "") + renderMarkdown(h1.body, targetPath());
       postProcess(edPreview);
     };
     const schedulePreview = () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 250); };
@@ -1107,9 +1274,10 @@
       if (!problems.length && !remind) setTimeout(() => { if (editor && !editor.dirty) { location.hash = "#/" + j.relPath; toast(`✅ 已保存${r?.status === "added" ? "并登记到 00-README" : ""} · 索引与静态站已重建`); } }, 900);
     }
     document.title = `${isEdit ? "编辑" : "新建笔记"} · ${APP}`;
-    mainEl.scrollTo(0, 0);
+    pendingScroll = null; mainEl.scrollTo(0, 0);
     if (isMobile()) layout.classList.remove("nav-open");
-    setTimeout(() => edText.focus(), 0);
+    // preventScroll：聚焦 textarea 不要把页面滚过头（标题被滚走、粘住的工具栏压住前两行）
+    setTimeout(() => edText.focus({ preventScroll: true }), 0);
   }
   function closeEditor() { editor = null; }
   window.addEventListener("beforeunload", (e) => { if (editor?.dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -1121,6 +1289,10 @@
   function subscribeChanges() {
     if (!("EventSource" in window)) return;
     const es = new EventSource("/api/events");
+    // 服务重启后浏览器会静默重连；重连成功就刷新目录，并告诉用户刚才断过
+    let dropped = false;
+    es.onerror = () => { dropped = true; };
+    es.onopen = () => { if (!dropped) return; dropped = false; loadTree().then(() => { toast("已重新连接本机服务，目录已刷新"); if (currentPath && !editor) route(); }).catch(() => {}); };
     es.onmessage = (e) => {
       let ev; try { ev = JSON.parse(e.data); } catch { return; }
       if (ev.type === "kb-changed") {
@@ -1131,10 +1303,24 @@
   }
 
   // ---------- Copilot ----------
-  const setChat = (open) => { document.body.classList.toggle("chat-open", open); if (open) setTimeout(() => $("#chatInput").focus(), 200); };
+  const setChat = (open) => {
+    const was = document.body.classList.contains("chat-open");
+    document.body.classList.toggle("chat-open", open);
+    $("#toggleChat").setAttribute("aria-expanded", String(open));
+    if (open) setTimeout(() => $("#chatInput").focus(), 200);
+    else if (was && $("#chat").contains(document.activeElement)) $("#toggleChat").focus({ preventScroll: true }); // 关掉抽屉时焦点别掉到 body 上
+  };
   $("#toggleChat").addEventListener("click", () => setChat(!document.body.classList.contains("chat-open")));
   $("#closeChat").addEventListener("click", () => setChat(false));
-  $("#clearChat").addEventListener("click", () => { history = []; chatLog.querySelectorAll(".msg").forEach((m) => m.remove()); $("#chatEmpty").hidden = false; });
+  $("#clearChat").addEventListener("click", () => { chatHistory = []; chatLog.querySelectorAll(".msg").forEach((m) => m.remove()); $("#chatEmpty").hidden = false; });
+  // 工具调用的可读标签：后端是 Claude Code（Bash / Grep / Read…），把它"在干什么"显示出来，等待时才有进度感
+  const TOOL_NAMES = { Bash: "命令", Grep: "全文检索", Read: "读取", Glob: "查找文件", Edit: "修改", Write: "写入", WebFetch: "抓取网页", search_knowledge_base: "检索知识库", read_document: "读取文档", list_documents: "列出文档", save_note: "保存笔记", log_qa: "记录问答" };
+  function toolLabel(ev) {
+    const i = ev.input ?? {};
+    const cmd = typeof i.command === "string" ? i.command.replace(/^node agent\/src\/cli\.js search\s*/, "检索：").replace(/\s*\|\s*head.*$/, "") : "";
+    const what = i.description || i.query || i.pattern || i.path || i.file_path || cmd || "";
+    return `${TOOL_NAMES[ev.name] ?? ev.name}${what ? "：" + String(what).slice(0, 70) : ""}`;
+  }
   document.querySelectorAll(".chip[data-q]").forEach((c) => c.addEventListener("click", () => sendChat(c.dataset.q)));
   const input = $("#chatInput");
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; });
@@ -1150,11 +1336,11 @@
   function renderAssistant(div, text, done) {
     const body = div.querySelector(".body");
     body.innerHTML = renderMarkdown(text, "") + (done ? "" : `<span class="typing"></span>`);
-    postProcess(body);
+    postProcess(body, { light: !done }); // 流式中途不跑 KaTeX / mermaid（半截公式必报错），结束时渲染一次
     if (done && text.trim() && !div.querySelector(".msg-actions")) {
       const bar = document.createElement("div"); bar.className = "msg-actions";
       const copy = document.createElement("button"); copy.type = "button"; copy.className = "btn small ghost"; copy.innerHTML = `${icon("copy")}复制`;
-      copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(text); toast("回答已复制"); } catch { toast("复制失败"); } });
+      copy.addEventListener("click", async () => toast((await copyText(text)) ? "回答已复制" : "复制失败"));
       bar.appendChild(copy);
       if (!STATIC) {
         // 把这条回答一键变成 notes/ 下的笔记（带来源问题），进编辑器再改
@@ -1178,25 +1364,27 @@
     setChat(true);
     const withCtx = $("#withContext").checked && currentPath;
     const content = withCtx ? `${text}\n\n（我正在阅读：${currentPath}）` : text;
-    history.push({ role: "user", content });
+    chatHistory.push({ role: "user", content });
     const u = addMsg("user"); u.querySelector(".bubble").textContent = text;
     const div = addMsg("assistant"); const toolsEl = div.querySelector(".tools");
     let acc = "", last = 0;
     chatAbort = new AbortController(); $("#chatStop").hidden = false;
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }), signal: chatAbort.signal });
-      if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: chatHistory }), signal: chatAbort.signal });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
       for await (const ev of readSSE(res)) {
-        if (ev.type === "text") { acc += ev.text; if (Date.now() - last > 80) { renderAssistant(div, acc, false); last = Date.now(); chatLog.scrollTop = chatLog.scrollHeight; } }
-        else if (ev.type === "tool_call") { const s = document.createElement("span"); s.textContent = `${ev.name}${ev.input?.query ? ": " + ev.input.query : ev.input?.path ? ": " + ev.input.path : ""}`; toolsEl.appendChild(s); }
+        // 流式回答每 250 ms 重排一次就够（每次都是全文重新解析，太勤会让长回答越来越卡）
+        if (ev.type === "text") { acc += ev.text; if (Date.now() - last > 250) { renderAssistant(div, acc, false); last = Date.now(); chatLog.scrollTop = chatLog.scrollHeight; } }
+        else if (ev.type === "tool_call") { toolsEl.querySelectorAll(".running").forEach((x) => x.classList.remove("running")); const s = document.createElement("span"); s.className = "running"; s.textContent = toolLabel(ev); toolsEl.appendChild(s); chatLog.scrollTop = chatLog.scrollHeight; }
+        else if (ev.type === "tool_result") toolsEl.querySelectorAll(".running").forEach((x) => x.classList.remove("running"));
         else if (ev.type === "status") { const s = document.createElement("span"); s.textContent = `ℹ️ ${ev.text}`; toolsEl.appendChild(s); }
         else if (ev.type === "error") acc += `\n\n> ⚠️ 出错：${ev.message}`;
         else if (ev.type === "done") acc = ev.text || acc;
       }
-    } catch (err) { acc += err.name === "AbortError" ? "\n\n> ⚠️ 已停止生成" : `\n\n> ⚠️ 请求失败：${err.message}`; }
-    finally { chatAbort = null; $("#chatStop").hidden = true; }
+    } catch (err) { acc += err.name === "AbortError" ? "\n\n> ⚠️ 已停止生成" : `\n\n> ⚠️ 请求失败：${err.message}${STATIC ? "" : "（本机服务没启动？）"}`; }
+    finally { chatAbort = null; $("#chatStop").hidden = true; toolsEl.querySelectorAll(".running").forEach((x) => x.classList.remove("running")); }
     renderAssistant(div, acc || "（无回复）", true);
-    history.push({ role: "assistant", content: acc });
+    chatHistory.push({ role: "assistant", content: acc });
     chatLog.scrollTop = chatLog.scrollHeight;
   }
   async function* readSSE(res) {
@@ -1211,7 +1399,8 @@
   // ---------- 导入论文 ----------
   const dlg = $("#importDialog");
   $("#importBtn").addEventListener("click", async () => {
-    const dirs = await (await fetch("/api/dirs")).json();
+    let dirs = [];
+    try { dirs = await getJSON("/api/dirs"); } catch (err) { return toast(`⚠️ 无法连接本机服务：${err.message}`); }
     $("#dirList").innerHTML = dirs.map((d) => `<option value="${escapeHtml(d)}">`).join("");
     $("#importProgress").hidden = true; $("#importProgress").textContent = ""; dlg.showModal();
   });
@@ -1225,6 +1414,7 @@
     const prog = $("#importProgress"); prog.hidden = false; prog.textContent = "正在读取论文并生成笔记（通常需要 1~3 分钟）…\n\n";
     try {
       const res = await fetch("/api/paper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `${res.status} ${res.statusText}`); // 403/400 的 JSON 不能当 SSE 读，否则进度框永远停在"正在读取"
       for await (const ev of readSSE(res)) {
         if (ev.type === "text") { prog.textContent += ev.text; prog.scrollTop = prog.scrollHeight; }
         else if (ev.type === "error") prog.textContent += `\n\n⚠️ ${ev.message}`;
@@ -1235,7 +1425,8 @@
   const fileToBase64 = (file) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(",")[1]); r.onerror = reject; r.readAsDataURL(file); });
 
   // ---------- 快捷键 ----------
-  $("#toggleNav").addEventListener("click", () => layout.classList.toggle(isMobile() ? "nav-open" : "nav-hidden"));
+  const toggleNav = () => { layout.classList.toggle(isMobile() ? "nav-open" : "nav-hidden"); $("#toggleNav").setAttribute("aria-expanded", String(isMobile() ? layout.classList.contains("nav-open") : !layout.classList.contains("nav-hidden"))); };
+  $("#toggleNav").addEventListener("click", toggleNav);
   document.addEventListener("keydown", (e) => {
     const typing = ["TEXTAREA", "INPUT"].includes(document.activeElement.tagName);
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palette.hidden ? openPalette() : closePalette(); return; }
@@ -1243,8 +1434,8 @@
     if (e.key === "Escape") { closePalette(); layout.classList.remove("nav-open"); if (document.activeElement === input) setChat(false); return; }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); openPalette(); }
-    else if (e.key === "[") layout.classList.toggle(isMobile() ? "nav-open" : "nav-hidden");
-    else if (e.key === "]") STATIC ? window.open(LOCAL_URL + location.hash, "_blank") : setChat(!document.body.classList.contains("chat-open"));
+    else if (e.key === "[") toggleNav();
+    else if (e.key === "]") STATIC ? localOnlyNotice() : setChat(!document.body.classList.contains("chat-open"));
     else if (e.key === "p") location.hash = "#/papers";
     else if (e.key === "g") location.hash = "#/graph";
     else if (e.key === "e" && !STATIC && currentPath && canEdit(currentPath)) location.hash = "#/edit/" + currentPath;
@@ -1255,13 +1446,25 @@
   });
   $("#navBackdrop").addEventListener("click", () => layout.classList.remove("nav-open"));
 
+  /** 静态站点 Copilot：先说明为什么不能用、怎么用本机版，再给链接（之前是直接弹一个本机地址，没装服务的人只看到打不开） */
+  function localOnlyNotice() {
+    let d = $("#localOnlyDialog");
+    if (!d) {
+      d = document.createElement("dialog"); d.id = "localOnlyDialog";
+      d.innerHTML = `<form method="dialog"><h2>Copilot 只在本机版可用</h2><p class="muted">公网阅读站是只读的。Copilot、写笔记、导入论文都要在你电脑上运行本机服务（Mac 上可用 <code>./start.sh service install</code> 设成开机自启）：</p><pre class="codeblock-lite">cd ~/Learning &amp;&amp; ./start.sh</pre><div class="dialog-actions"><button type="submit" class="btn ghost">关闭</button><a class="btn primary" id="localOnlyOpen" href="${escapeHtml(LOCAL_URL)}" target="_blank" rel="noopener">打开本机版 ↗</a></div></form>`;
+      document.body.appendChild(d);
+    }
+    $("#localOnlyOpen").href = LOCAL_URL + location.hash;
+    d.showModal();
+  }
   if (STATIC) {
-    // 公网静态站没有后端：隐藏导入与写笔记，助手按钮跳到本机版（Mac 上开机自启的 http://localhost:8787）
+    // 公网静态站没有后端：隐藏导入与写笔记，Copilot 按钮改成说明 + 本机版链接，抽屉本身从 DOM 里拿掉
     $("#importBtn").hidden = true;
     $("#newNoteBtn").hidden = true;
-    const btn = $("#toggleChat"); btn.innerHTML = `${icon("chat")}Copilot（本机）`; btn.title = "Copilot 只在你电脑上的本机版可用";
+    $("#chat").remove();
+    const btn = $("#toggleChat"); btn.innerHTML = `${icon("chat")}Copilot（本机）`; btn.title = "Copilot 只在你电脑上的本机版可用"; btn.removeAttribute("aria-expanded");
     btn.replaceWith(btn.cloneNode(true));
-    $("#toggleChat").addEventListener("click", () => window.open(LOCAL_URL + location.hash, "_blank"));
+    $("#toggleChat").addEventListener("click", localOnlyNotice);
   } else {
     fetch("/api/health").then((r) => r.json()).then((h) => { $("#chatModel").textContent = h.model; }).catch(() => {});
     subscribeChanges();

@@ -1,5 +1,5 @@
 ---
-title: ForceVLA 论文总览（规范论文笔记）
+title: ForceVLA 论文总览
 type: paper-note
 topic: forcevla
 chapter: 1
@@ -23,7 +23,7 @@ year: 2025
 venue: NeurIPS 2025
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-24
 ---
 
 # ForceVLA：用力感知混合专家增强 VLA 模型以完成接触丰富操作

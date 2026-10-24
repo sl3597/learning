@@ -7,7 +7,7 @@ level: all
 tags: [论文库, 论文笔记, 反向索引, VLA, 世界模型]
 status: draft
 created: 2026-10-17
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # 论文库总览（Research Papers）
@@ -58,21 +58,21 @@ flowchart LR
 |---|---|
 | [力传感与力控模式：读力、恒力下压与对接 ForceVLA](../UR/09-force-sensing-and-force-mode.md) | [Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md) |
 | [什么是机器人学习](../VLA/Basic/01-what-is-robot-learning.md) | [π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md) |
-| [Transformer 与多模态模型](../VLA/Basic/03-transformers-and-multimodal.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
-| [VLA 是什么：视觉-语言-动作模型的定义与数据流](../VLA/Basic/04-vla-concept.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md)<br>[Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md)<br>[ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
-| [代表性 VLA 模型纵览](../VLA/Basic/05-representative-models.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
+| [Transformer 与多模态模型](../VLA/Basic/03-transformers-and-multimodal.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
+| [VLA 是什么：视觉-语言-动作模型的定义与数据流](../VLA/Basic/04-vla-concept.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md)<br>[Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md)<br>[ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
+| [代表性 VLA 模型纵览](../VLA/Basic/05-representative-models.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
 | [数据集与数据采集](../VLA/Basic/06-datasets-and-data-collection.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md) |
 | [动作表示：从模型输出到电机转动](../VLA/Basic/07-action-representation.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md)<br>[Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md) |
-| [训练与微调：在自己的机器人上跑通 VLA](../VLA/Basic/08-training-and-finetuning.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md)<br>[π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
+| [训练与微调：在自己的机器人上跑通 VLA](../VLA/Basic/08-training-and-finetuning.md) | [OpenVLA：开源的视觉-语言-动作模型](VLA/01-openvla.md)<br>[π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md)<br>[π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
 | [评估与部署：从成功率到真机运行](../VLA/Basic/09-evaluation-and-deployment.md) | [FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md)<br>[π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md) |
-| [力觉与触觉感知：为什么只靠眼睛不够](../VLA/Basic/10-force-and-tactile-sensing.md) | [Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
+| [力觉与触觉感知：为什么只靠眼睛不够](../VLA/Basic/10-force-and-tactile-sensing.md) | [Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md)<br>[AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md)<br>[ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
 | [方法详解：π0 骨干 + FVLMoE 力感知融合](../VLA/ForceVLA/03-method.md) | [AT-VLA：自适应触觉注入与快慢双流的触觉反应](VLA/08-at-vla.md) |
 | [π 系列家族综述：一代解决一个问题](../VLA/Pi/01-pi-series-overview.md) | [π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md)<br>[π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md) |
 | [π0：VLM 骨干 + 流匹配动作专家](../VLA/Pi/02-pi0-architecture-and-flow-matching.md) | [π0：面向通用机器人控制的视觉-语言-动作流模型](VLA/02-pi0.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md)<br>[Tactile-VLA：解锁 VLA 模型的物理知识实现触觉泛化](VLA/07-tactile-vla.md) |
 | [FAST：把高频动作压缩成 token（π0-FAST）](../VLA/Pi/03-fast-action-tokenization.md) | [FAST：面向 VLA 的高效动作 token 化](VLA/03-fast.md) |
 | [π0.5：异构数据协同训练、分层推理与知识隔离](../VLA/Pi/04-pi05-open-world-and-knowledge-insulation.md) | [π0.5：面向开放世界泛化的视觉-语言-动作模型](VLA/04-pi05.md)<br>[知识隔离：让 VLA 训练快、推理快、泛化好](VLA/05-knowledge-insulation.md) |
 | [π*0.6：用 RECAP 从自身经验中学习](../VLA/Pi/05-pi06-learning-from-experience.md) | [π*0.6：从经验中学习的 VLA（RECAP）](VLA/06-pi06.md) |
-| [世界模型 × VLA：融合范式](../WAM/05-world-models-meet-vla.md) | [ForceVLA 论文总览（规范论文笔记）](../VLA/ForceVLA/01-paper-overview.md) |
+| [世界模型 × VLA：融合范式](../WAM/05-world-models-meet-vla.md) | [ForceVLA 论文总览](../VLA/ForceVLA/01-paper-overview.md) |
 <!-- AUTO-GENERATED:papers END -->
 
 ## 如何添加一篇论文

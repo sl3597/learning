@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Physical AI Research</title>
   <meta name="description" content="物理智能研究工作台：VLA、力/触觉融合、世界模型与机械臂部署的知识章节与论文笔记" />
+  <meta name="theme-color" content="#f3f3f0" />
   <link rel="stylesheet" href="vendor/hljs/styles/github.min.css" id="hljsLight" />
   <link rel="stylesheet" href="vendor/hljs/styles/github-dark.min.css" id="hljsDark" disabled />
   <link rel="stylesheet" href="vendor/katex/katex.min.css" />
@@ -12,11 +13,11 @@
 </head>
 <body>
   <div id="progress" class="progress-bar"></div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <button id="toTop" class="to-top" title="回到顶部" hidden data-icon="arrowUp"></button>
 
   <header class="topbar">
-    <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）" data-icon="menu"></button>
+    <button id="toggleNav" class="icon-btn" title="显示/隐藏目录（[）" aria-label="显示/隐藏目录" aria-expanded="true" aria-controls="nav" data-icon="menu"></button>
     <a class="brand" href="#/" title="总览">
       <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 27.3 9.5v13L16 29 4.7 22.5v-13z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.6" fill="currentColor"/><circle cx="16" cy="8" r="1.7" fill="currentColor"/><circle cx="9.2" cy="20" r="1.7" fill="currentColor"/><circle cx="22.8" cy="20" r="1.7" fill="currentColor"/><path d="M16 10v3.4M10.7 19.2l3.1-1.8M21.3 19.2l-3.1-1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       <span class="brand-text"><b>Physical AI</b><span>Research</span></span>
@@ -34,7 +35,7 @@
       <a id="newNoteBtn" class="btn ghost" href="#/new" title="新建笔记（n）" data-icon="edit">笔记</a>
       <button id="importBtn" class="btn ghost" title="导入论文生成笔记" data-icon="plus">导入论文</button>
       <button id="themeBtn" class="icon-btn" title="切换深浅色"></button>
-      <button id="toggleChat" class="btn primary" title="Copilot（]）" data-icon="chat">Copilot</button>
+      <button id="toggleChat" class="btn primary" title="Copilot（]）" aria-expanded="false" aria-controls="chat" data-icon="chat">Copilot</button>
     </div>
   </header>
 
@@ -104,8 +105,8 @@
   <!-- 搜索面板 -->
   <div id="palette" class="palette" hidden>
     <div class="palette-box">
-      <input id="paletteInput" type="search" placeholder="搜索标题、段落、命令…（支持中英文）" autocomplete="off" />
-      <div id="paletteResults" class="palette-results"></div>
+      <input id="paletteInput" type="search" placeholder="搜索标题、段落、命令…（支持中英文）" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="paletteResults" aria-autocomplete="list" aria-label="搜索知识库" />
+      <div id="paletteResults" class="palette-results" role="listbox" aria-label="搜索结果"></div>
       <div class="palette-foot muted small" id="paletteFoot">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
     </div>
   </div>
@@ -129,11 +130,9 @@
     </form>
   </dialog>
 
+  <!-- KaTeX 与 mermaid（合计 3.5 MB）不在这里加载：app.js 在正文真的有公式 / 图时才按需注入 vendor/katex、vendor/mermaid -->
   <script src="vendor/marked/marked.min.js"></script>
   <script src="vendor/hljs/highlight.min.js"></script>
-  <script src="vendor/katex/katex.min.js"></script>
-  <script src="vendor/katex/contrib/auto-render.min.js"></script>
-  <script src="vendor/mermaid/mermaid.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

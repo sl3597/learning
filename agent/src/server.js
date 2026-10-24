@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { KB_ROOT, PORT, DIST_DIR, AUTO_BUILD } from "./config.js";
 import { KnowledgeBase, safeResolve } from "./kb.js";
 import { backend } from "./backend.js";
-import { saveNote, readNote, noteTemplates, editableDirs, registerChapter, editorRules } from "./notes.js";
+import { saveNote, readNote, noteTemplates, editableDirs, registerChapter, editorRules, setStatus } from "./notes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(here, "..", "web");
@@ -193,10 +193,27 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, ...r, build });
     }
     if (url.pathname === "/api/search") {
-      const q = url.searchParams.get("q") ?? "";
-      const k = Number(url.searchParams.get("k") ?? 10);
+      const q = (url.searchParams.get("q") ?? "").trim();
+      if (!q) return json(res, 400, { error: "缺少查询词 q" });
+      const kRaw = url.searchParams.get("k");
+      const k = kRaw === null ? 20 : Number(kRaw);
+      if (kRaw !== null && (!/^\d+$/.test(kRaw.trim()) || k < 1 || k > 100)) return json(res, 400, { error: "k 必须是 1–100 的整数" });
       const topic = url.searchParams.get("topic") ?? "";
       return json(res, 200, kb.search(q, k, topic ? { topic } : {}));
+    }
+    if (url.pathname === "/api/status" && req.method === "POST") {
+      // 文档页右栏改状态（draft → reviewed → stable）：只改 frontmatter 的 status/updated 两行，其余流程与 /api/note 相同
+      const body = await readBody(req, 64 * 1024);
+      let r;
+      try {
+        r = setStatus(kb, { path: body.path, status: body.status });
+      } catch (err) {
+        return json(res, err.status ?? 400, { error: err.message });
+      }
+      if (!r.changed) return json(res, 200, { ok: true, ...r, build: null });
+      ignoreWatchUntil = Date.now() + 1500;
+      const build = await rebuild("status", r.path);
+      return json(res, 200, { ok: true, ...r, build });
     }
     if (url.pathname === "/api/doc") {
       const p = url.searchParams.get("path") ?? "";
