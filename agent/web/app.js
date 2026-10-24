@@ -131,7 +131,7 @@
     marked.use({ renderer });
   } else {
     const warn = document.createElement("div");
-    warn.style.cssText = "background:#fff4e5;color:#7a4b00;padding:6px 16px;font-size:13px";
+    warn.style.cssText = "background:#fff0e0;color:#8a3b00;padding:6px 16px;font-size:13px";
     warn.textContent = "⚠️ Markdown 渲染库未加载，已退化为纯文本显示。请在 agent/ 目录执行 npm install 后刷新。";
     document.body.insertBefore(warn, layout);
   }
@@ -182,11 +182,11 @@
   // ---------- 分类元数据：侧栏、总览、论文库、关联图、分类浏览共用 ----------
   // 顶层文件夹 → 短名、图标（ICONS 里的键）、主题色、学习顺序；没登记的文件夹自动用它目录页的标题
   const SECTIONS = {
-    LinuxCommand: { label: "Linux 命令", en: "Linux & Shell", icon: "terminal", color: "#0d9488", order: 1 },
-    VLA: { label: "VLA 模型", en: "Vision-Language-Action", icon: "bot", color: "#2563eb", order: 2 },
-    WAM: { label: "世界模型", en: "World Models", icon: "globe", color: "#7c3aed", order: 3 },
-    UR: { label: "UR 机械臂", en: "Robot Arm & Deployment", icon: "arm", color: "#ea580c", order: 4 },
-    Papers: { label: "论文库", en: "Paper Library", icon: "papers", color: "#475569", order: 90, library: true },
+    LinuxCommand: { label: "Linux 命令", en: "Linux & Shell", icon: "terminal", color: "#009999", order: 1 },
+    VLA: { label: "VLA 模型", en: "Vision-Language-Action", icon: "bot", color: "#007eb1", order: 2 },
+    WAM: { label: "世界模型", en: "World Models", icon: "globe", color: "#00b388", order: 3 },
+    UR: { label: "UR 机械臂", en: "Robot Arm & Deployment", icon: "arm", color: "#e96401", order: 4 },
+    Papers: { label: "论文库", en: "Paper Library", icon: "papers", color: "#4c4c68", order: 90, library: true },
   };
   // 子文件夹（相对 Knowledge/）→ 短名与图标；登记顺序就是显示顺序（论文领域与学习路线对齐）
   const SUBS = {
@@ -223,7 +223,7 @@
     const m = SECTIONS[dir.name];
     const readme = dir.files.find(isReadme);
     const fallback = readme ? readme.title.replace(/[（(].*?[)）]/g, "").replace(/(主题)?(总)?(目录|总览|学习路线)$/, "").trim() : dir.name;
-    return { key: dir.name, label: m?.label ?? fallback, en: m?.en ?? "", icon: m?.icon ?? "folder", color: m?.color ?? "#64748b", order: m?.order ?? 50, library: Boolean(m?.library), readme, dir };
+    return { key: dir.name, label: m?.label ?? fallback, en: m?.en ?? "", icon: m?.icon ?? "folder", color: m?.color ?? "#66667e", order: m?.order ?? 50, library: Boolean(m?.library), readme, dir };
   }
   const subLabel = (d) => SUBS[subKey(d)]?.label ?? sectionMeta(d).label;
   const subIcon = (d, fallback) => SUBS[subKey(d)]?.icon ?? fallback;
@@ -344,7 +344,7 @@
   function tlItem(f) {
     const sec = sectionOf(f.path); const deep = sec && !sec.library;
     const rel = relatedDocs(f).slice(0, 4);
-    return `<div class="tl-item" data-href="#/${f.path}" style="--sec:${deep ? sec.color : libSection()?.color ?? "#475569"}"><a class="tl-title" href="#/${f.path}">${escapeHtml(f.title)}</a><div class="tl-meta">${paperBadges(f)}${deep ? `<span class="sec-chip" style="--sec:${sec.color}">${icon(sec.icon)}精读专题</span>` : ""}</div>${f.summary ? `<p class="tl-sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="tl-rel">${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</a>`).join("")}</div>` : ""}</div>`;
+    return `<div class="tl-item" data-href="#/${f.path}" style="--sec:${deep ? sec.color : libSection()?.color ?? "#4c4c68"}"><a class="tl-title" href="#/${f.path}">${escapeHtml(f.title)}</a><div class="tl-meta">${paperBadges(f)}${deep ? `<span class="sec-chip" style="--sec:${sec.color}">${icon(sec.icon)}精读专题</span>` : ""}</div>${f.summary ? `<p class="tl-sum">${escapeHtml(f.summary)}</p>` : ""}${rel.length ? `<div class="tl-rel">${rel.map((d) => `<a class="chip" href="#/${d.path}" title="${escapeHtml(d.title)}">${escapeHtml(shortTitle(d.title))}</a>`).join("")}</div>` : ""}</div>`;
   }
   // 整块可点的卡片：点在链接 / 按钮以外的地方就打开 data-href
   contentEl.addEventListener("click", (e) => {
@@ -679,7 +679,7 @@
       const votes = new Map();
       for (const r of f.related || []) { const s = sectionOf(r); if (s && !s.library) votes.set(s.key, (votes.get(s.key) ?? 0) + 1); }
       const top = [...votes].sort((a, b) => b[1] - a[1])[0];
-      return top ? sections.find((s) => s.key === top[0])?.color ?? "#64748b" : own?.color ?? "#64748b";
+      return top ? sections.find((s) => s.key === top[0])?.color ?? "#66667e" : own?.color ?? "#66667e";
     };
     const link = (k, v) => { const p = new URLSearchParams(params); if (v == null || p.get(k) === v) p.delete(k); else p.set(k, v); const s = p.toString(); return `#/graph${s ? "?" + s : ""}`; };
     const secChips = `<a class="fchip${secSel ? "" : " on"}" href="${link("section", null)}">全部</a>` + sections.filter((s) => !s.library).map((s) => `<a class="fchip${secSel === s.key ? " on" : ""}" href="${link("section", s.key)}"><span class="sec-icon sm" style="--sec:${s.color}">${icon(s.icon)}</span>${escapeHtml(s.label)}</a>`).join("");
@@ -696,7 +696,7 @@
       <div class="toolbar"><div class="toolbar-row"><span class="lbl">主题</span>${secChips}<span class="seg-toggle"><a class="${showAll ? "" : "on"}" href="${link("all", null)}">只看有关联的</a><a class="${showAll ? "on" : ""}" href="${link("all", "1")}">包含全部章节</a></span></div></div>
       <div class="count-line">${N.length} nodes · ${E.length} edges · ${papersN} papers</div>
       <div class="graph-wrap" id="graphWrap">${N.length ? `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="知识章节与论文的关联图">${svgEdges}${svgNodes}</svg><div class="graph-tip" id="graphTip"></div>` : `<div class="browse-empty"><p>还没有论文关联到这个主题。</p></div>`}
-        <div class="graph-legend">${sections.filter((s) => !s.library).map((s) => `<span style="--sec:${s.color}"><i></i>${escapeHtml(s.label)}</span>`).join("")}<span style="--sec:${libSection()?.color ?? "#475569"}"><i class="sq"></i>论文笔记（方块）</span><span><i style="background:var(--border-strong)"></i>圆点：知识章节</span></div>
+        <div class="graph-legend">${sections.filter((s) => !s.library).map((s) => `<span style="--sec:${s.color}"><i></i>${escapeHtml(s.label)}</span>`).join("")}<span style="--sec:${libSection()?.color ?? "#4c4c68"}"><i class="sq"></i>论文笔记（方块）</span><span><i style="background:var(--border-strong)"></i>圆点：知识章节</span></div>
       </div>`;
     const wrap = $("#graphWrap"), tip = $("#graphTip");
     const adj = new Map();
@@ -722,7 +722,7 @@
 
   // ---------- 分类浏览：#/browse?section=&type=&level=&status=&tag=&q= ----------
   const FACETS = [
-    { key: "section", name: "主题", get: (f) => sectionOf(f.path)?.key ?? "_about", label: (v) => (v === "_about" ? "关于" : sections.find((x) => x.key === v)?.label ?? v), icon: (v) => { const s = sections.find((x) => x.key === v); return `<span class="sec-icon sm" style="--sec:${s?.color ?? "#64748b"}">${icon(s?.icon ?? "book")}</span>`; }, order: () => [...sections.map((x) => x.key), "_about"] },
+    { key: "section", name: "主题", get: (f) => sectionOf(f.path)?.key ?? "_about", label: (v) => (v === "_about" ? "关于" : sections.find((x) => x.key === v)?.label ?? v), icon: (v) => { const s = sections.find((x) => x.key === v); return `<span class="sec-icon sm" style="--sec:${s?.color ?? "#66667e"}">${icon(s?.icon ?? "book")}</span>`; }, order: () => [...sections.map((x) => x.key), "_about"] },
     { key: "type", name: "类型", get: (f) => f.type, label: (v) => TYPE_LABEL[v] ?? v, order: () => ORDER.type },
     { key: "level", name: "难度", get: (f) => f.level, label: (v) => LEVEL_LABEL[v] ?? v, order: () => ORDER.level },
     { key: "status", name: "状态", get: (f) => f.status, label: (v) => STATUS_LABEL[v] ?? v, order: () => ORDER.status },
@@ -741,7 +741,7 @@
     // 结果已按顶层主题分组，卡片上只标更细的一层（如"基础教程""ForceVLA 精读"）
     const p = f.path.split("/");
     const sub = p.length > 3 ? SUBS[`${p[1]}/${p[2]}`]?.label ?? p[2] : "";
-    return `<a class="doc-card" href="#/${f.path}" style="--sec:${s?.color ?? "#64748b"}">
+    return `<a class="doc-card" href="#/${f.path}" style="--sec:${s?.color ?? "#66667e"}">
       <div class="dc-top"><span class="type-badge t-${escapeHtml(f.type ?? "")}">${escapeHtml(TYPE_LABEL[f.type] ?? f.type ?? "")}</span>${sub ? `<span class="sec-chip">${escapeHtml(sub)}</span>` : ""}${f.chapter > 0 && f.type === "tutorial" ? `<span class="dc-num">CH ${String(f.chapter).padStart(2, "0")}</span>` : ""}</div>
       <h3>${escapeHtml(f.title)}</h3>
       ${f.summary ? `<p>${escapeHtml(f.summary)}</p>` : ""}
@@ -799,7 +799,7 @@
       ? `<div class="count-line">${hits.length} / ${pool.filter((f) => f.type !== "index").length} documents</div>` + keys.map((k) => {
           const s = sections.find((x) => x.key === k);
           const files = groups.get(k).sort((a, b) => a.path.localeCompare(b.path));
-          return `<section class="browse-group" style="--sec:${s?.color ?? "#64748b"}"><h2 class="bg-title"><span class="sec-icon">${icon(s?.icon ?? "book")}</span>${escapeHtml(s?.label ?? "关于")}<span class="count">${files.length}</span></h2><div class="doc-grid">${files.map(docCard).join("")}</div></section>`;
+          return `<section class="browse-group" style="--sec:${s?.color ?? "#66667e"}"><h2 class="bg-title"><span class="sec-icon">${icon(s?.icon ?? "book")}</span>${escapeHtml(s?.label ?? "关于")}<span class="count">${files.length}</span></h2><div class="doc-grid">${files.map(docCard).join("")}</div></section>`;
         }).join("")
       : `<div class="browse-empty"><p>没有符合条件的文档。</p><a class="btn small" href="#/browse">清除全部条件</a></div>`;
   }
