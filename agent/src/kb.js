@@ -56,6 +56,9 @@ function stripQuotes(s) {
 /** 第 3 节：每个文件必填的 frontmatter 字段。 */
 export const FRONTMATTER_FIELDS = ["title", "type", "topic", "level", "tags", "status", "created", "updated"];
 
+/** 第 3 节：status 的取值（草稿 → 已复核 → 稳定）；文档页的状态切换（POST /api/status）据此校验。 */
+export const STATUS_VALUES = ["draft", "reviewed", "stable"];
+
 /** 第 4/5/6 节：各 type 的固定 H2 标题（文字与顺序都固定）。 */
 export const SECTION_RULES = {
   tutorial: ["学习目标", "前置知识", "核心概念", "详细讲解", "动手练习", "常见错误与排查", "小结", "自测题", "参考资料"],

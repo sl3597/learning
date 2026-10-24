@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { KnowledgeBase } from "../src/kb.js";
+import { packChunks } from "../src/search-core.js";
 
 const AGENT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT = path.resolve(AGENT, "..");
@@ -51,7 +52,8 @@ export function buildStatic(out = path.join(ROOT, "dist"), kb = new KnowledgeBas
   write(out, "data/tree.json", JSON.stringify(kb.tree()));
   write(out, "data/stats.json", JSON.stringify(kb.stats()));
   for (const relPath of kb.docs.keys()) write(out, `data/doc/${relPath}.json`, JSON.stringify(kb.docPayload(relPath)));
-  write(out, "data/search.json", JSON.stringify(kb.chunks));
+  // 搜索索引用压缩形式（每篇文档的元数据只存一次，正文只留能构成检索词的字符），SearchIndex 两种形式都认
+  write(out, "data/search.json", JSON.stringify(packChunks(kb.chunks)));
 
   // 知识库里的图片等附件（Markdown 里的相对路径在页面上解析为 kb/<路径>）；以 kb.root 为准，服务和测试可能换根目录
   let assets = 0;

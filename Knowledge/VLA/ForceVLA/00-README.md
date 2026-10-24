@@ -13,7 +13,7 @@ sources:
   - https://github.com/ft-robotic/ForceVLA
 status: draft
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-24
 ---
 
 # ForceVLA 论文专题目录
@@ -48,7 +48,7 @@ flowchart LR
 | 章节 | 文件 | 类型 | 难度 | 预计时长 | 状态 |
 |---|---|---|---|---|---|
 | 00 目录 | `00-README.md` | index | all | 10min | draft |
-| 01 论文总览（规范论文笔记） | [01-paper-overview.md](01-paper-overview.md) | paper-note | intermediate | 20min | draft |
+| 01 论文总览 | [01-paper-overview.md](01-paper-overview.md) | paper-note | intermediate | 20min | draft |
 | 02 背景与动机 | [02-background-and-motivation.md](02-background-and-motivation.md) | tutorial | beginner | 30min | draft |
 | 03 方法详解：π0 + FVLMoE | [03-method.md](03-method.md) | tutorial | intermediate | 60min | draft |
 | 04 数据集 ForceVLA-Data | [04-dataset-forcevla-data.md](04-dataset-forcevla-data.md) | tutorial | beginner | 30min | draft |

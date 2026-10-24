@@ -4,14 +4,50 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NOTES_DIR, PAPERS_DIR, PAPER_DOMAINS, localDate } from "./config.js";
-import { safeResolve, normalizeRel, parseFrontmatter, FILE_NAME_RE, FRONTMATTER_FIELDS, SECTION_RULES } from "./kb.js";
+import { safeResolve, normalizeRel, parseFrontmatter, FILE_NAME_RE, FRONTMATTER_FIELDS, SECTION_RULES, STATUS_VALUES } from "./kb.js";
 import { syncIndexes } from "./papers.js";
 
 export { FILE_NAME_RE };
 
 /** What the editor needs to lint a draft before saving (mirrors kb.check()). */
 export function editorRules() {
-  return { fields: FRONTMATTER_FIELDS, sections: SECTION_RULES, fileName: FILE_NAME_RE.source, summaryMax: 60 };
+  return { fields: FRONTMATTER_FIELDS, sections: SECTION_RULES, statuses: STATUS_VALUES, fileName: FILE_NAME_RE.source, summaryMax: 60 };
+}
+
+/** Error carrying the HTTP status the API should answer with (400 bad request, 404 unknown document). */
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
+/**
+ * Change one document's `status:` (STANDARD 第 3 节：draft | reviewed | stable) in place for POST /api/status.
+ * Only the `status:` and `updated:` lines of the frontmatter are rewritten; the body is not touched.
+ * Returns {path, status, updated, changed, indexes}; `changed: false` when the document already had that status.
+ */
+export function setStatus(kb, { path: relPath, status, today = localDate() }) {
+  if (!STATUS_VALUES.includes(status)) throw httpError(400, `status 必须是 ${STATUS_VALUES.join(" | ")}`);
+  const rel = normalizeRel(relPath);
+  if (!rel || !rel.endsWith(".md") || rel.includes("..")) throw httpError(400, `无效路径：${relPath ?? ""}`);
+  if (isProtected(rel)) throw httpError(400, "STANDARD.md 与 templates/ 不能在网页里修改");
+  const doc = kb.getDoc(rel);
+  if (!doc) throw httpError(404, `找不到文档：${rel}`);
+  const abs = safeResolve(rel, kb.root);
+  const text = fs.readFileSync(abs, "utf8");
+  const end = text.startsWith("---") ? text.indexOf("\n---", 3) : -1;
+  if (end === -1) throw httpError(400, `${rel} 没有 frontmatter`);
+  if ((doc.meta.status ?? null) === status) return { path: rel, status, updated: doc.meta.updated ?? null, changed: false, indexes: [] };
+  // 只在 frontmatter 块（"---" 到下一个 "\n---" 之前）里替换；字段缺失就补在块末尾
+  let fm = text.slice(0, end);
+  const setLine = (key, value) => {
+    const re = new RegExp(`^${key}:.*$`, "m");
+    fm = re.test(fm) ? fm.replace(re, `${key}: ${value}`) : `${fm}\n${key}: ${value}`;
+  };
+  setLine("status", status);
+  setLine("updated", today);
+  fs.writeFileSync(abs, fm + text.slice(end), "utf8");
+  kb.reindex();
+  // 论文笔记的状态列出现在论文库目录表里，和 /api/note 一样自动刷新
+  const indexes = syncIndexes(kb, { write: true }).filter((r) => r.status === "updated").map((r) => r.relPath);
+  if (indexes.length) kb.reindex();
+  return { path: rel, status, updated: today, changed: true, indexes };
 }
 
 /** Files the editor must never touch (the protocol and its templates; same rule as the agent's save_note). */
